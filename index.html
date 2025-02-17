@@ -15,10 +15,10 @@
     <h1>Cash-Out Calculator</h1>
 
     <label for="cashTips">Total Cash Tips ($):</label>
-    <input type="number" id="cashTips" placeholder="Enter cash tips">
+    <input type="number" id="cashTips" placeholder="Enter cash tips" inputmode="numeric" pattern="[0-9]*">
 
     <label for="cardTips">Total Credit Card Tips ($):</label>
-    <input type="number" id="cardTips" placeholder="Enter card tips">
+    <input type="number" id="cardTips" placeholder="Enter card tips" inputmode="numeric" pattern="[0-9]*">
 
     <div id="fohStaffContainer">
         <label>Select FOH Staff:</label>
@@ -55,7 +55,7 @@
     </div>
 
     <label for="onCallHours">On-Call Staff Hours (if any):</label>
-    <input type="number" id="onCallHours" placeholder="Enter hours (optional)" min="0">
+    <input type="number" id="onCallHours" placeholder="Enter hours (optional)" min="0" inputmode="numeric" pattern="[0-9]*"> 
 
     <button id="calculate">Calculate</button>
 
