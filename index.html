@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cash-Out Calculator</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- jsPDF Library (Required for PDF generation) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="container">
+    <img src="assets/img/TheAce_BlackLogo.png" alt="The Ace Logo" class="logo">
+    <h1>Cash-Out Calculator</h1>
+
+    <label for="cashTips">Total Cash Tips ($):</label>
+    <input type="number" id="cashTips" placeholder="Enter cash tips">
+
+    <label for="cardTips">Total Credit Card Tips ($):</label>
+    <input type="number" id="cardTips" placeholder="Enter card tips">
+
+    <div id="fohStaffContainer">
+        <label>Select FOH Staff:</label>
+        <div class="staff-list">
+
+            <input type="checkbox" id="staff-archie" value="Archie">
+            <label for="staff-archie">Archie</label>
+
+            <input type="checkbox" id="staff-asa" value="Asa">
+            <label for="staff-asa">Asa</label>
+
+            <input type="checkbox" id="staff-bree" value="Bree">
+            <label for="staff-bree">Bree</label>
+
+            <input type="checkbox" id="staff-dave" value="Dave">
+            <label for="staff-dave">Dave</label>
+
+            <input type="checkbox" id="staff-devon" value="Devon">
+            <label for="staff-devon">Devon</label>
+
+            <input type="checkbox" id="staff-karyn" value="Karyn">
+            <label for="staff-karyn">Karyn</label>
+
+            <input type="checkbox" id="staff-shelagh" value="Shelagh">
+            <label for="staff-shelagh">Shelagh</label>
+
+            <input type="checkbox" id="staff-simon" value="Simon">
+            <label for="staff-simon">Simon</label>
+
+            <input type="checkbox" id="staff-wes" value="Wes">
+            <label for="staff-wes">Wes</label>
+
+        </div>
+    </div>
+
+    <label for="onCallHours">On-Call Staff Hours (if any):</label>
+    <input type="number" id="onCallHours" placeholder="Enter hours (optional)" min="0">
+
+    <button id="calculate">Calculate</button>
+
+    <div id="results"></div>
+    <button id="copyResults" style="display: none;">Copy Results</button>
+    <button id="shareWhatsApp" disabled>Share on WhatsApp</button>
+    <button id="savePDF" disabled>Save as PDF</button>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+/* Updated Color Palette */
+:root {
+    --beaver: #A58F75;
+    --brown-sugar: #A36A57;
+    --dun: #C8BBA8;
+    --umber: #6E5C49;
+    --battleship-gray: #8C816E;
+}
+
+/* Body - Subtle Background */
+body {
+    font-family: 'Arial', sans-serif;
+    background: url('assets/img/acewallpapercomp.jpeg') no-repeat center center fixed;
+    background-size: cover;
+    position: relative;
+    color: var(--umber);
+}
+
+/* Overlay Effect */
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(200, 187, 168, 0.55); /* Dun shade with transparency */
+    backdrop-filter: blur(4px); /* Aesthetic touch */
+    z-index: -10;
+    pointer-events: none;
+}
+
+/* Container Styling */
+.container {
+    width: 90%;
+    max-width: 400px;
+    margin: 80px auto;
+    padding: 25px;
+    background: rgba(255, 255, 255, 0.85); /* Softer white */
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); /* Stronger shadow */
+    text-align: center;
+    position: relative;
+    backdrop-filter: blur(5px); /* Adds a glassy effect */
+    z-index: 10; /* Ensures it's above the background */
+}
+
+/* Fix the blocking issue by allowing clicks through */
+.container::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    pointer-events: none; /* Allows clicking through */
+}
+
+/* Logo Styling */
+.logo {
+    width: 150px;
+    margin-bottom: 15px;
+    filter: drop-shadow(0px 3px 6px rgba(0, 0, 0, 0.2)); /* Subtle shadow effect */
+}
+
+/* Title */
+h1 {
+    color: #333;
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+/* Labels */
+label {
+    display: block;
+    margin-top: 10px;
+    font-weight: bold;
+    color: var(--umber);
+}
+
+
+/* Input Fields */
+input {
+    width: calc(100% - 20px);
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid var(--beaver);
+    border-radius: 8px;
+    font-size: 16px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.9);
+    text-align: left;
+}
+
+input:hover {
+    box-shadow: 0 0 6px rgba(166, 124, 82, 0.3);
+}
+
+/* Input Focus Effect */
+input:focus {
+    border-color: #a67c52; /* Matches button color */
+    outline: none;
+    box-shadow: 0 0 8px rgba(163, 106, 87, 0.5);
+    transition: all 0.3s ease-in-out;
+}
+
+/* Button Styling */
+button {
+    background-color: var(--brown-sugar);
+    color: white;
+    border: none;
+    padding: 12px;
+    margin-top: 15px;
+    cursor: pointer;
+    width: 100%;
+    border-radius: 5px;
+    font-size: 18px;
+    font-weight: bold;
+    transition: all 0.3s ease-in-out;
+}
+
+button:hover {
+    background-color: var(--umber);
+}
+
+/* Staff Selection Styling */
+.staff-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin: 10px 0;
+}
+
+.staff-list label {
+    background: rgba(255, 255, 255, 0.85); /* Softer white */
+    padding: 10px 15px;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid var(--beaver);
+    transition: all 0.3s ease-in-out;
+}
+
+/* Make selection pop */
+.staff-list label:hover {
+    background: var(--beaver);
+    color: white;
+}
+
+/* Ensure checkboxes are hidden */
+.staff-list input[type="checkbox"] {
+    display: none;
+}
+
+/* Active (selected) state */
+.staff-list input[type="checkbox"]:checked + label {
+    background: var(--brown-sugar); /* Rich brown sugar tone for selected buttons */
+    color: white;
+    font-weight: bold;
+    border-color: var(--umber); /* Darker border */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Smooth staff selection animation */
+.staff-list label {
+    transition: transform 0.2s ease, background 0.3s ease;
+}
+
+.staff-list label:active {
+    transform: scale(0.97);
+}
+
+
+/* Multi-Select Dropdown */
+select {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 16px;
+    background: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+}
+
+/* Smooth staff selection animation */
+.staff-list label {
+    transition: transform 0.2s ease, background 0.3s ease;
+}
+
+.staff-list label:active {
+    transform: scale(0.97);
+}
+
+/* Button Animation */
+button {
+    transition: all 0.3s ease-in-out;
+}
+
+button:active {
+    transform: scale(0.98); /* Slight press-down effect */
+}
+
+/* Button Click Effect */
+button:active {
+    transform: scale(0.96);
+    transition: 0.1s ease-in-out;
+}
+
+/* Allow multiple selections */
+select[multiple] {
+    height: auto;
+    min-height: 100px;
+}
+
+#fohStaff {
+    width: 100%;
+    height: 120px; /* Adjust based on need */
+    padding: 10px;
+    border: 1px solid #a67c52;
+    border-radius: 5px;
+    font-size: 14px;
+    background: rgba(255, 255, 255, 0.9);
+    outline: none;
+}
+
+/* Results Section */
+#results {
+    margin-top: 20px;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 5px;
+    opacity: 0; /* Hide initially */
+    transform: translateY(-10px); /* Slide up effect */
+    transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+}
+
+/* Results Table Styling */
+.tip-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 15px;
+    background: white;
+    color: var(--umber);
+    font-size: 15px;
+    text-align: left;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1); /* Soft shadow */
+}
+
+/* Table Headers */
+.tip-table th {
+    background: var(--brown-sugar);
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-weight: bold;
+    border-bottom: 2px solid var(--umber);
+}
+
+/* Table Data */
+.tip-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--beaver);
+}
+
+/* Alternate Row Backgrounds */
+.tip-table tr:nth-child(even) {
+    background: rgba(200, 187, 168, 0.2); /* Light beige striping */
+}
+
+/* Hover Effect */
+.tip-table tr:hover {
+    background: rgba(163, 106, 87, 0.2); /* Light brown hover effect */
+    transition: background 0.3s ease-in-out;
+}
+
+/* First & Last Row Border Fix */
+.tip-table tr:first-child th {
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+
+.tip-table tr:last-child td {
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    border-bottom: none;
+}
+
+
+@media print {
+    body {
+        background: white !important;
+        color: black !important;
+    }
+}
+
+/* Mobile Friendly Design */
+@media (max-width: 768px) {
+    .container {
+        width: 90%; /* Slightly smaller on mobile */
+        max-width: 400px; /* Keeps it proportional */
+        padding: 20px;
+    }
+
+    .staff-list label {
+        font-size: 14px; /* Slightly smaller on mobile */
+        padding: 8px 12px;
+    }
+
+    input {
+        font-size: 18px; /* Larger text for mobile users */
+        padding: 16px;
+    }
+
+    button {
+        font-size: 16px;
+        padding: 10px;
+    }
+
+    #results {
+        padding: 15px;
+        font-size: 16px; /* Increase readability */
+    }
+}
+
