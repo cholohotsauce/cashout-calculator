@@ -1,153 +1,141 @@
-// Function to get selected FOH staff in alphabetical order
+// Get selected staff
 function getSelectedStaff() {
     return Array.from(document.querySelectorAll('#fohStaffContainer input[type="checkbox"]:checked'))
         .map(input => input.value)
-        .sort(); // Sort alphabetically
+        .sort();
 }
 
-// Event listener for the Calculate button
-document.getElementById("calculate").addEventListener("click", function() {
+// Dynamically add input fields for selected staff hours
+document.querySelectorAll('#fohStaffContainer input[type="checkbox"]').forEach(checkbox => {
+    checkbox.addEventListener("change", () => {
+        const selectedStaff = getSelectedStaff();
+        const container = document.getElementById("staffHoursContainer");
+        container.innerHTML = ""; // Clear existing
+
+        selectedStaff.forEach(staff => {
+            const div = document.createElement("div");
+            div.classList.add("staff-hours-entry");
+            div.innerHTML = `
+                <label for="hours-${staff}">${staff} Hours Worked:</label>
+                <input type="number" id="hours-${staff}" class="staff-hours-input" placeholder="Hours for ${staff}" min="0" step="0.1">
+            `;
+            container.appendChild(div);
+        });
+    });
+});
+
+// Main calculation logic
+document.getElementById("calculate").addEventListener("click", () => {
     const cashTips = parseFloat(document.getElementById("cashTips").value) || 0;
     const cardTips = parseFloat(document.getElementById("cardTips").value) || 0;
     const selectedStaff = getSelectedStaff();
-    const onCallHours = parseFloat(document.getElementById("onCallHours").value) || 0;
-
-    // Error handling
-    if (cashTips === 0 && cardTips === 0) {
-        alert("⚠️ Please enter cash or card tips before calculating!");
-        return;
-    }
 
     if (selectedStaff.length === 0) {
-        alert("⚠️ Please select at least one FOH staff member.");
+        alert("Please select at least one FOH staff member.");
         return;
     }
 
-    // Calculate total tips
+    let staffHours = {};
+    let totalFOHHours = 0;
+    let valid = true;
+
+    selectedStaff.forEach(staff => {
+        const input = document.getElementById(`hours-${staff}`);
+        const hours = parseFloat(input.value);
+        if (isNaN(hours) || hours <= 0) {
+            alert(`Enter valid hours for ${staff}.`);
+            valid = false;
+        } else {
+            staffHours[staff] = hours;
+            totalFOHHours += hours;
+        }
+    });
+
+    if (!valid) return;
+
     const totalTips = cashTips + cardTips;
     const bohTips = totalTips * 0.30;
-    let fohTips = totalTips * 0.70;
+    const fohTips = totalTips * 0.70;
+    const perHourRate = fohTips / totalFOHHours;
 
-    // Get today's date
     const today = new Date();
     const formattedDate = today.toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
 
-    // Start creating the table
     let resultText = `<h3>Results for ${formattedDate}</h3>
                       <table class="tip-table">
                           <tr><th>Category</th><th>Amount</th></tr>
                           <tr><td>Total Tips</td><td>$${totalTips.toFixed(2)}</td></tr>
-                          <tr><td>BOH (Kitchen) Tips</td><td>$${bohTips.toFixed(2)}</td></tr>`;
-
-    if (onCallHours > 0) {
-        const fullShiftHours = 6;
-        const totalHoursWorked = (selectedStaff.length - 1) * fullShiftHours + onCallHours;
-        const perHourRate = fohTips / totalHoursWorked;
-
-        const onCallStaffShare = perHourRate * onCallHours;
-        fohTips -= onCallStaffShare;
-
-        resultText += `<tr><td>On-Call Staff Tips</td><td>$${onCallStaffShare.toFixed(2)}</td></tr>`;
-    }
-
-    // Divide remaining FOH tips among full-shift staff
-    const fohPerStaff = fohTips / (selectedStaff.length - (onCallHours > 0 ? 1 : 0));
+                          <tr><td>BOH (Kitchen) Tips</td><td>$${bohTips.toFixed(2)}</td></tr>
+                          <tr><td>FOH Tip Rate</td><td>$${perHourRate.toFixed(2)} per hour</td></tr>`;
 
     selectedStaff.forEach(staff => {
-        resultText += `<tr><td>${staff}</td><td>$${fohPerStaff.toFixed(2)}</td></tr>`;
+        const tipAmount = staffHours[staff] * perHourRate;
+        resultText += `<tr><td>${staff}</td><td>$${tipAmount.toFixed(2)}</td></tr>`;
     });
 
-    resultText += `</table>`; // Close table
+    resultText += `</table>`;
+    document.getElementById("results").innerHTML = resultText;
+    document.getElementById("results").style.opacity = 1;
 
-    // Display results with animation
-    const resultsDiv = document.getElementById("results");
-    resultsDiv.innerHTML = resultText;
-    resultsDiv.style.display = "block";
-    resultsDiv.style.opacity = "1";
-    resultsDiv.style.transform = "translateY(0)";
-
-    // Enable action buttons
     document.getElementById("copyResults").style.display = "block";
     document.getElementById("savePDF").disabled = false;
     document.getElementById("shareWhatsApp").disabled = false;
-
-    console.log("✅ Calculation complete!");
 });
 
-// Copy results to clipboard
-document.getElementById("copyResults").addEventListener("click", function() {
+// Copy to Clipboard
+document.getElementById("copyResults").addEventListener("click", () => {
     const resultsText = document.getElementById("results").innerText;
     navigator.clipboard.writeText(resultsText).then(() => {
-        alert("✅ Results copied to clipboard!");
+        alert("Results copied to clipboard!");
     }).catch(err => {
         console.error("Failed to copy: ", err);
     });
 });
 
-// Share results via WhatsApp
-document.getElementById("shareWhatsApp").addEventListener("click", function() {
+// WhatsApp Share
+document.getElementById("shareWhatsApp").addEventListener("click", () => {
     const resultsText = document.getElementById("results").innerText;
-    if (!resultsText.trim()) {
-        alert("⚠️ No results to share! Please calculate first.");
-        return;
-    }
-
-    const formattedText = `🔥 *Cash-Out Report* 🔥\n\n${resultsText}`;
-    const encodedText = encodeURIComponent(formattedText);
+    const encodedText = encodeURIComponent(resultsText);
     const whatsappURL = `https://api.whatsapp.com/send?text=${encodedText}`;
-
     window.open(whatsappURL, "_blank");
 });
 
-// Save results as a PDF
-document.getElementById("savePDF").addEventListener("click", function () {
+// Save PDF
+document.getElementById("savePDF").addEventListener("click", () => {
     if (!window.jspdf) {
-        alert("⚠️ PDF Library (jsPDF) is not loaded. Please check your internet connection.");
+        alert("PDF Library not loaded.");
         return;
     }
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4"
-    });
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-    // Set Title
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.text("Cash-Out Report", 105, 20, { align: "center" });
 
-    // Get today's date
     const today = new Date().toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: 'numeric'
+        weekday: "long", year: "numeric", month: 'long', day: 'numeric'
     });
 
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
     doc.text(`Date: ${today}`, 15, 30);
 
-    // Fetch results data
     const resultsElement = document.getElementById("results");
     if (!resultsElement.innerText.trim()) {
-        alert("⚠️ No results to save. Please calculate first!");
+        alert("No results to save.");
         return;
     }
 
-    let resultsText = resultsElement.innerText.split("\n");
-    let y = 40; // Y position for text placement
-
-    doc.setFontSize(12);
-    resultsText.forEach((line) => {
+    const lines = resultsElement.innerText.split("\n");
+    let y = 40;
+    lines.forEach((line) => {
         doc.text(line, 15, y);
         y += 7;
     });
 
-    // Save the PDF file
     doc.save(`CashOutReport_${new Date().toISOString().slice(0, 10)}.pdf`);
 });
