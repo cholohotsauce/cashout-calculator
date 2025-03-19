@@ -6,7 +6,6 @@
     <title>Cash-Out Calculator</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <!-- jsPDF Library (Required for PDF generation) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
@@ -15,15 +14,14 @@
     <h1>Cash-Out Calculator</h1>
 
     <label for="cashTips">Total Cash Tips ($):</label>
-    <input type="number" id="cashTips" placeholder="Enter cash tips" inputmode="decimal" pattern="[0-9]+(\.[0-9]{1,2})?" step="0.01">
+    <input type="number" id="cashTips" placeholder="Enter cash tips" min="0" step="0.01">
 
     <label for="cardTips">Total Credit Card Tips ($):</label>
-    <input type="number" id="cardTips" placeholder="Enter card tips" inputmode="decimal" pattern="[0-9]+(\.[0-9]{1,2})?" step="0.01">
+    <input type="number" id="cardTips" placeholder="Enter card tips" min="0" step="0.01">
 
     <div id="fohStaffContainer">
         <label>Select FOH Staff:</label>
         <div class="staff-list">
-
             <input type="checkbox" id="staff-archie" value="Archie">
             <label for="staff-archie">Archie</label>
 
@@ -50,16 +48,18 @@
 
             <input type="checkbox" id="staff-wes" value="Wes">
             <label for="staff-wes">Wes</label>
-
         </div>
     </div>
 
-    <label for="onCallHours">On-Call Staff Hours (if any):</label>
-    <input type="number" id="onCallHours" placeholder="Enter hours (optional)" min="0" inputmode="decimal" pattern="[0-9]+(\.[0-9]{1,2})?" step="0.01">
+    <!-- Staff Hours Inputs -->
+    <div id="staffHoursContainer"></div>
 
+    <!-- Action Buttons -->
     <button id="calculate">Calculate</button>
 
-    <div id="results"></div>
+    <!-- RESULTS CONTAINER -->
+    <div id="results" style="margin-top: 20px;"></div>
+
     <button id="copyResults" style="display: none;">Copy Results</button>
     <button id="shareWhatsApp" disabled>Share on WhatsApp</button>
     <button id="savePDF" disabled>Save as PDF</button>
