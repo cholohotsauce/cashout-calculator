@@ -37,7 +37,7 @@ document.querySelectorAll('#fohStaffContainer input[type="checkbox"], #additiona
       div.classList.add("staff-hours-entry");
       div.innerHTML = `
                 <label for="hours-${staff}">${staff} Hours Worked:</label>
-                <input type="number" id="hours-${staff}" class="staff-hours-input" placeholder="Hours for ${staff}" min="0" step="0.1">
+                <input type="number" id="hours-${staff}" class="staff-hours-input" placeholder="Hours for ${staff}" min="0" step="0.1" inputmode="decimal">
             `;
       container.appendChild(div);
     });
