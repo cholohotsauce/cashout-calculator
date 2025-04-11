@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cash-Out Calculator</title>
     <link rel="stylesheet" href="style.css">
-    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script async defer src="https://apis.google.com/js/api.js"></script>
+    <!-- Note: Google Drive integration has been removed for now -->
 </head>
 <body>
 <div class="container">
@@ -59,19 +58,24 @@
     <!-- Staff Hours Inputs -->
     <div id="staffHoursContainer"></div>
 
+
+
     <!-- Action Buttons -->
     <button id="calculate">Calculate</button>
-    <!-- Google Drive Button -->
-    <button id="googleDriveBtn" title="Upload to Google Drive">
-        <img src="assets/img/google-drive-icon.svg" alt="Google Drive" style="width:20px; vertical-align: middle; margin-right: 8px;"> Upload to Drive
-    </button>
 
     <!-- RESULTS CONTAINER -->
     <div id="results" style="margin-top: 20px;"></div>
 
-    <button id="copyResults">Copy Results</button>
+    <!-- Action Buttons for further processing -->
+    <button id="copyResults" style="display: none;">Copy Results</button>
     <button id="shareWhatsApp" disabled>Share on WhatsApp</button>
     <button id="savePDF" disabled>Save as PDF</button>
+
+    <!-- Simple on-screen instruction for manual upload -->
+    <p class="instructions">
+        To save your report, click "Save as PDF" and use the iOS share options to upload the file to Google Drive,
+        or click "Copy Results" to paste the text into a Google Doc.
+    </p>
 </div>
 
 <script src="script.js"></script>
