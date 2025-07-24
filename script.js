@@ -128,11 +128,15 @@ document.getElementById("savePDF").addEventListener("click", () => {
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.text("Cash-Out Report", 105, 20, { align: "center" });
+    doc.text("The Ace - Cash-Out Report", 105, 20, { align: "center" });
 
     doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Date & Time: ${getFormattedDateTime()}`, 15, 30);
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated on: ${getFormattedDateTime()}`, 15, 30);
+
+    doc.setDrawColor(166, 124, 82); // warm brown tone
+    doc.setLineWidth(0.5);
+    doc.line(15, 33, 195, 33); // horizontal line under date
 
     const resultsElement = document.getElementById("results");
     if (!resultsElement.innerText.trim()) {
