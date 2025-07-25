@@ -149,7 +149,19 @@ document.getElementById("savePDF").addEventListener("click", () => {
         doc.text(line, 15, y);
         y += 7;
     });
-    doc.save(`CashOutReport_${new Date().toISOString().slice(0, 10)}.pdf`);
+    const localDate = new Date();
+    const months = ["January", "February", "March", "April", "May", "June", "July",
+                    "August", "September", "October", "November", "December"];
+    const year = localDate.getFullYear();
+    const monthName = months[localDate.getMonth()];
+    const day = localDate.getDate();
+    let hours = localDate.getHours();
+    const minutes = String(localDate.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    const fileName = `${monthName} ${day} ${year} ${hours}-${minutes} ${ampm}.pdf`;
+    doc.save(fileName);
 });
 
 // Count how many times the logo is clicked
