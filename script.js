@@ -16,34 +16,84 @@ function getFormattedDateTime() {
     }
 }
 
-// Get selected staff from both FOH and additional staff sections
+// Get selected staff from FOH section
 function getSelectedStaff() {
     const fohCheckboxes = document.querySelectorAll('#fohStaffContainer input[type="checkbox"]:checked');
-    const additionalCheckboxes = document.querySelectorAll('#additionalStaffContainer input[type="checkbox"]:checked');
-    let staff = Array.from(fohCheckboxes).map(input => input.value)
-        .concat(Array.from(additionalCheckboxes).map(input => input.value));
+    let staff = [];
+
+    fohCheckboxes.forEach(input => {
+        if (input.id === "staff-extra") {
+            const customName = document.getElementById("customExtraPersonName")?.value.trim();
+            staff.push(customName || "Extra Person 👤");
+        } else {
+            staff.push(input.value);
+        }
+    });
+
     return staff.sort();
 }
 
-// Dynamically add input fields for selected staff hours
-document.querySelectorAll('#fohStaffContainer input[type="checkbox"], #additionalStaffContainer input[type="checkbox"]').forEach(checkbox => {
-    checkbox.addEventListener("change", () => {
-        const selectedStaff = getSelectedStaff();
-        const container = document.getElementById("staffHoursContainer");
-        container.innerHTML = ""; // Clear existing
+// Show/hide the Extra Person name input (and clear on uncheck)
+const extraCheckbox = document.getElementById('staff-extra');
+const extraNameWrapper = document.getElementById('extraPersonNameInput'); // existing DIV in HTML
+const extraNameInput = document.getElementById('customExtraPersonName');
 
-        selectedStaff.forEach(staff => {
-            const div = document.createElement("div");
-            div.classList.add("staff-hours-entry");
-            // Added inputmode="decimal" for mobile devices to show a numeric keyboard with a decimal point.
-            div.innerHTML = `
-                <label for="hours-${staff}">${staff} Hours Worked:</label>
-                <input type="number" id="hours-${staff}" class="staff-hours-input" placeholder="Hours for ${staff}" min="0" step="0.1" inputmode="decimal">
-            `;
-            container.appendChild(div);
-        });
-    });
+function toggleExtraPersonUI() {
+  if (!extraCheckbox || !extraNameWrapper) return;
+  if (extraCheckbox.checked) {
+    extraNameWrapper.style.display = 'block';
+    setTimeout(() => extraNameInput?.focus({ preventScroll: true }), 0);
+  } else {
+    extraNameWrapper.style.display = 'none';
+    if (extraNameInput) extraNameInput.value = '';
+  }
+}
+
+extraCheckbox?.addEventListener('change', () => {
+  toggleExtraPersonUI();
+  renderStaffHours(); // keep hours labels in sync
 });
+
+extraNameInput?.addEventListener('input', () => {
+  // Update hours labels live when typing a name
+  if (extraCheckbox?.checked) renderStaffHours();
+});
+
+// Initialize on load
+toggleExtraPersonUI();
+// Create safe IDs from staff names (no spaces/emoji) and keep a lookup
+function slugify(text) {
+  return String(text)
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+
+// Dynamically add input fields for selected staff hours
+function renderStaffHours() {
+  const selectedStaff = getSelectedStaff();
+  const container = document.getElementById('staffHoursContainer');
+  container.innerHTML = ''; // Clear existing
+
+  selectedStaff.forEach(staff => {
+    const id = `hours-${slugify(staff)}`;
+    const div = document.createElement('div');
+    div.classList.add('staff-hours-entry');
+    div.innerHTML = `
+      <label for="${id}">${staff} Hours Worked:</label>
+      <input type="number" id="${id}" class="staff-hours-input" placeholder="Hours for ${staff}" min="0" step="0.1" inputmode="decimal">
+    `;
+    container.appendChild(div);
+  });
+}
+
+// Re-render hours when any FOH checkbox toggles
+document.querySelectorAll('#fohStaffContainer input[type="checkbox"]').forEach(checkbox => {
+  checkbox.addEventListener('change', renderStaffHours);
+});
+
 
 // Main calculation logic
 document.getElementById("calculate").addEventListener("click", () => {
@@ -61,7 +111,7 @@ document.getElementById("calculate").addEventListener("click", () => {
     let valid = true;
 
     selectedStaff.forEach(staff => {
-        const input = document.getElementById(`hours-${staff}`);
+        const input = document.getElementById(`hours-${slugify(staff)}`);
         const hours = parseFloat(input.value);
         if (isNaN(hours) || hours <= 0) {
             alert(`Enter valid hours for ${staff}.`);
@@ -88,7 +138,28 @@ document.getElementById("calculate").addEventListener("click", () => {
                           <tr><td>FOH Tip Rate</td><td>$${perHourRate.toFixed(2)} per hour</td></tr>`;
     selectedStaff.forEach(staff => {
         const tipAmount = staffHours[staff] * perHourRate;
-        resultText += `<tr><td>${staff}</td><td>$${tipAmount.toFixed(2)}</td></tr>`;
+
+        let displayName = staff;
+        if (staff === "Chef 👨‍🍳") {
+            const customChefName = document.getElementById("customChefName").value.trim();
+            if (customChefName) {
+                displayName = `Chef (${customChefName})`;
+            }
+        }
+        if (staff === "Shift Ninja 🥷") {
+            const customNinjaName = document.getElementById("customNinjaName").value.trim();
+            if (customNinjaName) {
+                displayName = `Shift Ninja (${customNinjaName})`;
+            }
+        }
+        // Extra Person: if a custom name was typed, it already replaced the label via getSelectedStaff()
+        if (staff === 'Extra Person 👤') {
+            const typed = document.getElementById('customExtraPersonName')?.value.trim();
+            if (typed) {
+                displayName = typed; // Replace label with the typed name
+            }
+        }
+        resultText += `<tr><td>${displayName}</td><td>$${tipAmount.toFixed(2)}</td></tr>`;
     });
     resultText += `</table>`;
 
@@ -134,9 +205,9 @@ document.getElementById("savePDF").addEventListener("click", () => {
     doc.setFont("helvetica", "italic");
     doc.text(`Generated on: ${getFormattedDateTime()}`, 15, 30);
 
-    doc.setDrawColor(166, 124, 82); // warm brown tone
+    doc.setDrawColor(166, 124, 82);
     doc.setLineWidth(0.5);
-    doc.line(15, 33, 195, 33); // horizontal line under date
+    doc.line(15, 33, 195, 33);
 
     const resultsElement = document.getElementById("results");
     if (!resultsElement.innerText.trim()) {
@@ -159,7 +230,7 @@ document.getElementById("savePDF").addEventListener("click", () => {
     const minutes = String(localDate.getMinutes()).padStart(2, '0');
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours ? hours : 12;
     const fileName = `${monthName} ${day} ${year} ${hours}-${minutes} ${ampm}.pdf`;
     doc.save(fileName);
 });
@@ -170,9 +241,8 @@ const logo = document.querySelector(".logo");
 
 logo.addEventListener("click", () => {
     logoClickCount++;
-    // When clicked 5 times, show a secret message
     if (logoClickCount === 5) {
         alert("Marico el que lo lea :)");
-        logoClickCount = 0; // reset count so it can be triggered again
+        logoClickCount = 0;
     }
 });
