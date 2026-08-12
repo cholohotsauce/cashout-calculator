@@ -33,7 +33,7 @@ const Background = () => (
   <div className="fixed inset-0 z-0">
     <div 
       className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: "url('/acewallpapercomp.jpeg')" }}
+      style={{ backgroundImage: "url('/cashout-calculator/acewallpapercomp.jpeg')" }}
     />
     <div className="absolute inset-0 bg-black/65" />
   </div>
@@ -201,7 +201,7 @@ export default function Home() {
       <div className="relative z-10 w-full max-w-2xl mx-auto p-4 sm:p-8">
         <div className="flex flex-col items-center mb-8 mt-4 cursor-pointer" onClick={handleLogoClick}>
           <img 
-            src="/TheAce_BlackLogo.png" 
+            src="/cashout-calculator/TheAce_BlackLogo.png" 
             alt="The Ace Logo" 
             className="h-12 object-contain invert opacity-70"
           />
@@ -431,7 +431,7 @@ export default function Home() {
             className="w-14 h-14 flex-shrink-0 flex items-center justify-center bg-white/10 border border-white/20 text-white rounded-[20px] shadow-lg transition-all transform hover:scale-[1.02] active:scale-[0.98] focus:outline-none"
             title="Save to Drive"
           >
-            <img src="/google-drive-icon.svg" alt="Google Drive" className="w-6 h-6" />
+            <img src="/cashout-calculator/google-drive-icon.svg" alt="Google Drive" className="w-6 h-6" />
           </button>
         </div>
       </div>
