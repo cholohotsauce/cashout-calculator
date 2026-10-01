@@ -16,6 +16,10 @@ import { Toast, useToast } from "./components/Toast";
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
+// Loaded after the first calculation so Save PDF can run straight from the tap
+// (iPad Safari can block downloads that start after an await).
+let pdfModule: typeof import("@/lib/pdf") | null = null;
+
 const EXTRA = "Extra Person";
 const DEFAULT_STAFF = ["Archie", "Asa", "Chloe", "Daniel", "Devon", "Karyn", "Liam", "Nat", "Wes", EXTRA];
 
@@ -127,6 +131,7 @@ export default function Home() {
     }
     setShowErrors(false);
     dismiss();
+    import("@/lib/pdf").then((m) => (pdfModule = m)).catch(() => {});
     setResults({ ...calculateCashOut(live.cash, live.card, live.staff), key: live.key });
     requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
@@ -159,9 +164,8 @@ export default function Home() {
 
   const savePdf = async () => {
     if (!results) return;
-    // jsPDF is large, so it only loads the first time someone saves a report.
-    const { saveCashOutPdf } = await import("@/lib/pdf");
-    saveCashOutPdf(results);
+    const pdf = pdfModule ?? (pdfModule = await import("@/lib/pdf"));
+    pdf.saveCashOutPdf(results);
     show("PDF saved", "success");
   };
 
