@@ -14,7 +14,9 @@ import {
 } from "@/lib/cashout";
 import { Toast, useToast } from "./components/Toast";
 
-const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+// Hardcoded on purpose: the Pages workflow (actions/configure-pages) builds with its own
+// generated next.config.js, so env values from next.config.ts never reach the deployed build.
+const BASE_PATH = "/cashout-calculator";
 
 // Loaded after the first calculation so Save PDF can run straight from the tap
 // (iPad Safari can block downloads that start after an await).
