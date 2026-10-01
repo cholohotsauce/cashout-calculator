@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# The Ace · Tip Cash-Out Calculator
 
-## Getting Started
+A small web app for splitting a restaurant shift's tips. Enter the cash and card tips, pick who worked front of house, add their hours, and get each person's payout. Built for the staff at The Ace and used on a phone at the end of the night.
 
-First, run the development server:
+**Live:** https://cholohotsauce.github.io/cashout-calculator/
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+<p>
+  <img src="docs/screenshots/start.jpg" alt="Tip entry and staff selection" width="300" />
+  &nbsp;
+  <img src="docs/screenshots/results.jpg" alt="Cash-out results with staff breakdown" width="300" />
+</p>
+
+## How the split works
+
+1. Cash and card tips are added into one pool.
+2. 30% goes to the kitchen (BOH).
+3. The remaining 70% is the FOH pool, shared by hours worked: `rate = FOH pool / total FOH hours`, and each person gets `hours × rate`.
+
+## Features
+
+- Live preview of the total, BOH share and hourly rate in the bottom bar, plus an estimate next to each person's hours as you type.
+- Inline validation that points at the missing field instead of a pop-up.
+- A results card that flags when inputs changed after calculating.
+- Copy to clipboard, share to WhatsApp, or save a formatted PDF report (jsPDF loads only when you first save).
+- A "+ Extra" slot for someone who isn't on the regular roster.
+- Mobile first: large tap targets, a sticky action bar, safe-area padding and reduced-motion support.
+
+## Tech
+
+[Next.js](https://nextjs.org) 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS 4 · Framer Motion · jsPDF. It's deployed to GitHub Pages by [`.github/workflows/nextjs.yml`](.github/workflows/nextjs.yml) on every push to `main`.
+
+```
+app/page.tsx            UI and state
+app/components/Toast    lightweight notifications
+lib/cashout.ts          split math, formatting and the shareable text
+lib/pdf.ts              PDF report layout
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run it locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev     # http://localhost:3000/cashout-calculator
+npm run build   # static site in ./out
+npm run lint
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The app is served under `/cashout-calculator` (see `basePath` in `next.config.ts`) to match its GitHub Pages URL.
