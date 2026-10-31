@@ -27,7 +27,7 @@ A small web app for splitting a restaurant shift's tips. Enter the cash and card
 
 ## Tech
 
-[Next.js](https://nextjs.org) 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS 4 · Framer Motion · jsPDF. It's deployed to GitHub Pages by [`.github/workflows/nextjs.yml`](.github/workflows/nextjs.yml) on every push to `main`.
+[Next.js](https://nextjs.org) 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS 4 · Framer Motion · jsPDF. It's deployed to GitHub Pages by [`.github/workflows/nextjs.yml`](.github/workflows/nextjs.yml) and to Vercel (through its GitHub integration) on every push to `main`.
 
 ```
 app/page.tsx            UI and state
@@ -45,4 +45,4 @@ npm run build   # static site in ./out
 npm run lint
 ```
 
-The app is served under `/cashout-calculator` (see `basePath` in `next.config.ts`) to match its GitHub Pages URL.
+Locally and on GitHub Pages the app is served under `/cashout-calculator` to match the Pages URL. Vercel builds set `VERCEL=1`, which drops the prefix so the app sits at the domain root (see `next.config.ts`).
