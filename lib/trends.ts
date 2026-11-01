@@ -41,7 +41,7 @@ export async function loadTrends(weeks = 12) {
       `select coalesce(sum(cash_cents), 0)::int as cash, coalesce(sum(card_cents), 0)::int as card from cashouts where shift_date >= $1`,
       [from],
     ),
-    db.query(
+    await db.query(
       `select to_char(shift_date, 'YYYY-MM-DD') as d, sum(total_cents)::int as total
          from cashouts group by shift_date order by total desc limit 1`,
     ),
