@@ -5,8 +5,10 @@ import { connection } from "next/server";
 import { isDatabaseConfigured } from "@/lib/db";
 import { isManager } from "@/lib/auth";
 import { loadHistory } from "@/lib/history";
-import { buildPaydayEmail, isEmailConfigured, payrollRecipients } from "@/lib/email";
+import { buildPaydayEmail, canSendEmail, isEmailConfigured, payrollRecipients } from "@/lib/email";
 import { addDays, formatDay } from "@/lib/payroll";
+import { buildStubEmail, weekStubs } from "@/lib/stubs";
+import { listStaff } from "@/lib/staff";
 import { Backdrop } from "../../components/Backdrop";
 
 export const metadata: Metadata = { title: "Payday email preview · The Ace" };
@@ -16,12 +18,19 @@ export default async function EmailPreviewPage({ searchParams }: PageProps<"/his
   await connection();
   if (!isDatabaseConfigured() || !(await isManager())) redirect("/history");
 
-  const { week } = await searchParams;
+  const { week, stub: stubName } = await searchParams;
   const history = await loadHistory("payday", typeof week === "string" ? week : undefined);
   const period = history.period!;
-  const email = buildPaydayEmail(history);
-  const recipients = payrollRecipients();
-  const sendsOn = formatDay(addDays(period.payday, -1), { weekday: "long", month: "short", day: "numeric" });
+  const [stubs, staff] = await Promise.all([weekStubs(period.weekStart), listStaff()]);
+  const emailOf = new Map(staff.map((s) => [s.name.toLowerCase(), s.email]));
+  const stub = typeof stubName === "string" ? stubs.find((s) => s.name.toLowerCase() === stubName.toLowerCase()) : undefined;
+  const email = stub ? buildStubEmail(stub) : buildPaydayEmail(history);
+  const recipients = stub ? [emailOf.get(stub.name.toLowerCase())].filter((e): e is string => Boolean(e)) : payrollRecipients();
+  const sendsOn = stub
+    ? "When the week is marked paid"
+    : `${formatDay(addDays(period.payday, -1), { weekday: "long", month: "short", day: "numeric" })}, around 9am Eastern`;
+  const tab = (active: boolean) =>
+    `whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors ${active ? "bg-copper/25 font-semibold text-copper-light ring-1 ring-copper/40" : "text-white/55 hover:bg-white/10 hover:text-white"}`;
 
   return (
     <div className="relative min-h-screen bg-black pb-16 font-sans">
@@ -41,16 +50,31 @@ export default async function EmailPreviewPage({ searchParams }: PageProps<"/his
           <span className="w-[84px]" />
         </header>
 
+        <nav aria-label="Which email" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+          <Link href={`/history/email?week=${period.weekStart}`} className={tab(!stub)}>
+            Rafa&apos;s payday email
+          </Link>
+          {stubs.map((s) => (
+            <Link key={s.name} href={`/history/email?week=${period.weekStart}&stub=${encodeURIComponent(s.name)}`} className={tab(stub?.name === s.name)}>
+              {s.name}&apos;s stub
+            </Link>
+          ))}
+        </nav>
+
         <section className="rounded-[28px] border border-white/10 bg-white/[0.05] p-5 text-sm backdrop-blur-3xl sm:p-6">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
             <dt className="text-white/45">To</dt>
-            <dd className="text-white/90">{recipients.length ? recipients.join(", ") : <span className="text-amber-200">PAYROLL_EMAIL isn&apos;t set yet</span>}</dd>
+            <dd className="text-white/90">{recipients.length ? (
+                recipients.join(", ")
+              ) : (
+                <span className="text-amber-200">{stub ? `No email on file for ${stub.name}. Add one in Staff & settings.` : "PAYROLL_EMAIL isn't set yet"}</span>
+              )}</dd>
             <dt className="text-white/45">Subject</dt>
             <dd className="font-medium text-white">{email.subject}</dd>
             <dt className="text-white/45">Sends</dt>
             <dd className="text-white/90">
-              {sendsOn}, around 9am Eastern
-              {!isEmailConfigured() && <span className="text-amber-200"> (sending isn&apos;t switched on yet)</span>}
+              {sendsOn}
+              {!(stub ? canSendEmail() : isEmailConfigured()) && <span className="text-amber-200"> (sending isn&apos;t switched on yet)</span>}
             </dd>
             {email.attachments.map((a) => (
               <div key={a.filename} className="contents">
@@ -65,7 +89,7 @@ export default async function EmailPreviewPage({ searchParams }: PageProps<"/his
           title="Email preview"
           srcDoc={email.html}
           sandbox="allow-popups allow-popups-to-escape-sandbox"
-          className="h-[1100px] w-full rounded-[28px] border border-white/10 bg-[#f5f5f4]"
+          className={`${stub ? "h-[920px]" : "h-[1100px]"} w-full rounded-[28px] border border-white/10 bg-[#f5f5f4]`}
         />
       </main>
     </div>

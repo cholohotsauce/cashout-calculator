@@ -1,10 +1,11 @@
+/** Default kitchen share; the live value is a setting managers can change. */
 export const BOH_SHARE = 0.3;
-export const FOH_SHARE = 1 - BOH_SHARE;
 
 export type StaffPayout = { name: string; hours: number; amount: number };
 
 export type CashOut = {
   dateTime: string;
+  bohShare: number;
   cash: number;
   card: number;
   totalTips: number;
@@ -75,17 +76,19 @@ export function calculateCashOut(
   card: number,
   staff: { name: string; hours: number }[],
   date = new Date(),
+  bohShare = BOH_SHARE,
 ): CashOut {
   const cashCents = toCents(cash);
   const cardCents = toCents(card);
   const totalCents = cashCents + cardCents;
   const totalHours = staff.reduce((sum, s) => sum + s.hours, 0);
-  const bohCents = Math.round(totalCents * BOH_SHARE);
+  const bohCents = Math.round(totalCents * bohShare);
   const fohCents = totalCents - bohCents;
   const shares = allocateCents(fohCents, staff.map((s) => s.hours));
 
   return {
     dateTime: formatDateTime(date),
+    bohShare,
     cash: cashCents / 100,
     card: cardCents / 100,
     totalTips: totalCents / 100,
@@ -104,7 +107,7 @@ export function cashOutToText(r: CashOut) {
     ``,
     `Total tips: ${formatMoney(r.totalTips)}`,
     `  Cash ${formatMoney(r.cash)} · Card ${formatMoney(r.card)}`,
-    `BOH (kitchen, ${Math.round(BOH_SHARE * 100)}%): ${formatMoney(r.bohTips)}`,
+    `BOH (kitchen, ${Math.round(r.bohShare * 100)}%): ${formatMoney(r.bohTips)}`,
     `FOH pool: ${formatMoney(r.fohTips)}`,
     `FOH rate: ${formatMoney(r.fohRate)}/hr over ${formatHours(r.totalHours)}`,
     `--------------------------`,

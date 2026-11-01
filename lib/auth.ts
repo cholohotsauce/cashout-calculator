@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { withDb } from "./db";
+import { audit } from "./audit";
 
 const COOKIE = "ace_manager";
 const SESSION_DAYS = 7;
@@ -34,7 +35,7 @@ export async function isManager() {
   return safeEqual(signature, sign(`manager:${expires}`));
 }
 
-async function clientIp() {
+export async function clientIp() {
   const h = await headers();
   return h.get("x-real-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 }
@@ -70,6 +71,7 @@ export async function signIn(pin: string): Promise<LoginResult> {
   }
 
   await withDb((db) => db.query("delete from login_attempts where ip = $1", [ip]));
+  await audit("manager", "manager.signed_in");
   const expires = Date.now() + SESSION_DAYS * 86_400_000;
   (await cookies()).set(COOKIE, `${expires}.${sign(`manager:${expires}`)}`, {
     httpOnly: true,

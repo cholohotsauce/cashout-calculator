@@ -49,4 +49,31 @@ create table if not exists email_log (
   sent_at  timestamptz not null default now(),
   primary key (kind, key)
 );
+-- The FOH roster shown on the calculator. People are archived, never deleted, so history stays readable.
+create table if not exists staff (
+  id          serial primary key,
+  name        text not null check (length(trim(name)) between 1 and 40),
+  email       text,
+  phone       text,
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+create unique index if not exists staff_name_key on staff (lower(trim(name)));
+
+-- Small key/value settings, e.g. the kitchen (BOH) share.
+create table if not exists settings (
+  key    text primary key,
+  value  jsonb not null
+);
+
+-- Every change that matters for money: saves, edits, deletes, paid/unpaid, settings, roster.
+create table if not exists audit_log (
+  id      bigserial primary key,
+  at      timestamptz not null default now(),
+  actor   text not null,              -- 'calculator' or 'manager'
+  action  text not null,
+  detail  jsonb not null default '{}',
+  ip      text
+);
+create index if not exists audit_log_at_idx on audit_log (at desc);
 `;

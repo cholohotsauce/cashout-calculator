@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import { BOH_SHARE, CashOut, formatHours, formatMoney, pdfFileName } from "./cashout";
+import { CashOut, formatHours, formatMoney, pdfFileName } from "./cashout";
 
 const COPPER: [number, number, number] = [166, 104, 62];
 const INK: [number, number, number] = [28, 25, 23];
@@ -40,7 +40,7 @@ export function saveCashOutPdf(r: CashOut) {
   row("Total tips", formatMoney(r.totalTips), { bold: true, size: 15 });
   row("Cash", formatMoney(r.cash));
   row("Card", formatMoney(r.card));
-  row(`BOH (kitchen, ${Math.round(BOH_SHARE * 100)}%)`, formatMoney(r.bohTips));
+  row(`BOH (kitchen, ${Math.round(r.bohShare * 100)}%)`, formatMoney(r.bohTips));
   row("FOH pool", formatMoney(r.fohTips));
   row("FOH rate", `${formatMoney(r.fohRate)} / hr  ·  ${formatHours(r.totalHours)}`);
 

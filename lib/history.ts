@@ -1,6 +1,7 @@
 import "server-only";
-import { BOH_SHARE, type CashOut } from "./cashout";
+import type { CashOut } from "./cashout";
 import { transaction, withDb } from "./db";
+import { audit } from "./audit";
 import { addDays, currentPayPeriod, isIsoDate, localToday, missingNights, mondayOf, payPeriod, type PayPeriod } from "./payroll";
 
 export type SavedShift = {
@@ -51,7 +52,10 @@ async function assertUnpaid(db: Db, dates: string[]) {
 export async function saveShift(id: string, r: CashOut, shiftDate: string, timeZone: string) {
   const cents = (d: number) => Math.round(d * 100);
   await transaction(async (db) => {
-    const existing = await db.query<{ d: string }>("select to_char(shift_date, 'YYYY-MM-DD') as d from cashouts where id = $1 for update", [id]);
+    const existing = await db.query<{ d: string; total_cents: number }>(
+      "select to_char(shift_date, 'YYYY-MM-DD') as d, total_cents from cashouts where id = $1 for update",
+      [id],
+    );
     await assertUnpaid(db, [shiftDate, ...existing.rows.map((row) => row.d)]);
     await db.query(
       `insert into cashouts (id, shift_date, time_zone, cash_cents, card_cents, total_cents, boh_cents, foh_cents, boh_share, total_hours)
@@ -61,7 +65,7 @@ export async function saveShift(id: string, r: CashOut, shiftDate: string, timeZ
          cash_cents = excluded.cash_cents, card_cents = excluded.card_cents, total_cents = excluded.total_cents,
          boh_cents = excluded.boh_cents, foh_cents = excluded.foh_cents, boh_share = excluded.boh_share,
          total_hours = excluded.total_hours`,
-      [id, shiftDate, timeZone, cents(r.cash), cents(r.card), cents(r.totalTips), cents(r.bohTips), cents(r.fohTips), BOH_SHARE, r.totalHours],
+      [id, shiftDate, timeZone, cents(r.cash), cents(r.card), cents(r.totalTips), cents(r.bohTips), cents(r.fohTips), r.bohShare, r.totalHours],
     );
     await db.query("delete from cashout_staff where cashout_id = $1", [id]);
     await db.query(
@@ -76,33 +80,58 @@ export async function saveShift(id: string, r: CashOut, shiftDate: string, timeZ
         r.staffTips.map((s) => cents(s.amount)),
       ],
     );
+    const before = existing.rows[0];
+    await audit(
+      "calculator",
+      before ? "shift.updated" : "shift.saved",
+      {
+        id,
+        shiftDate,
+        totalCents: cents(r.totalTips),
+        ...(before && { previousTotalCents: before.total_cents, previousShiftDate: before.d }),
+        staff: r.staffTips.map((s) => ({ name: s.name, hours: s.hours, amountCents: cents(s.amount) })),
+      },
+      db,
+    );
   });
 }
 
 export async function deleteShift(id: string) {
   await transaction(async (db) => {
-    const { rows } = await db.query<{ d: string }>("select to_char(shift_date, 'YYYY-MM-DD') as d from cashouts where id = $1 for update", [id]);
+    const { rows } = await db.query<{ d: string; total_cents: number; staff: string[] }>(
+      `select to_char(c.shift_date, 'YYYY-MM-DD') as d, c.total_cents,
+              array(select name from cashout_staff s where s.cashout_id = c.id order by position) as staff
+       from cashouts c where c.id = $1 for update`,
+      [id],
+    );
     if (!rows.length) return;
     await assertUnpaid(db, [rows[0].d]);
     await db.query("delete from cashouts where id = $1", [id]);
+    await audit("manager", "shift.deleted", { id, shiftDate: rows[0].d, totalCents: rows[0].total_cents, staff: rows[0].staff }, db);
   });
 }
 
 /** Locks a pay week, recording what it added up to when it was paid. */
-export async function markWeekPaid(weekStart: string) {
+export async function markWeekPaid(weekStart: string): Promise<boolean> {
   const { weekStart: monday, weekEnd } = payPeriod(weekStart);
-  await withDb((db) =>
-    db.query(
+  return transaction(async (db) => {
+    const { rows } = await db.query<{ total_cents: number }>(
       `insert into pay_periods (week_start, total_cents)
        select $1::date, coalesce(sum(total_cents), 0) from cashouts where shift_date between $1::date and $2::date
-       on conflict (week_start) do nothing`,
+       on conflict (week_start) do nothing
+       returning total_cents`,
       [monday, weekEnd],
-    ),
-  );
+    );
+    if (rows.length) await audit("manager", "week.paid", { weekStart: monday, totalCents: rows[0].total_cents }, db);
+    return rows.length > 0;
+  });
 }
 
 export async function unmarkWeekPaid(weekStart: string) {
-  await withDb((db) => db.query("delete from pay_periods where week_start = $1", [mondayOf(weekStart)]));
+  await transaction(async (db) => {
+    const { rowCount } = await db.query("delete from pay_periods where week_start = $1", [mondayOf(weekStart)]);
+    if (rowCount) await audit("manager", "week.unlocked", { weekStart: mondayOf(weekStart) }, db);
+  });
 }
 
 /** The zone of the most recent save stands in for the restaurant's local time. */

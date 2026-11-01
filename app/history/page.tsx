@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
-import type { ReactNode } from "react";
 import { formatHours, formatMoney } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
 import { isManager, isPinConfigured } from "@/lib/auth";
 import { RANGES, isRangeKey, loadHistory, type PeriodStatus, type RangeKey, type SavedShift } from "@/lib/history";
 import { addDays, formatDay, formatRange, mondayOf } from "@/lib/payroll";
-import { Backdrop } from "../components/Backdrop";
-import { logoutAction, markPaidAction, unmarkPaidAction } from "../actions";
+import { markPaidAction, unmarkPaidAction, sendStubsAction } from "../actions";
+import { Panel, Shell } from "./ui";
 import { ConfirmAction } from "./ConfirmAction";
 import { PinForm } from "./PinForm";
 import { DeleteShiftButton } from "./DeleteShiftButton";
@@ -16,49 +15,6 @@ import { DeleteShiftButton } from "./DeleteShiftButton";
 export const metadata: Metadata = { title: "Shift history · The Ace" };
 
 const cents = (c: number) => formatMoney(c / 100);
-
-function Panel({ title, aside, children }: { title?: string; aside?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="rounded-[28px] border border-white/10 bg-white/[0.05] p-5 shadow-xl backdrop-blur-3xl sm:p-6">
-      {title && (
-        <div className="mb-4 flex items-center gap-3">
-          <h2 className="text-lg font-semibold tracking-tight text-white/90">{title}</h2>
-          {aside && <div className="ml-auto text-sm text-white/45">{aside}</div>}
-        </div>
-      )}
-      {children}
-    </section>
-  );
-}
-
-function Shell({ children, signedIn = false }: { children: ReactNode; signedIn?: boolean }) {
-  return (
-    <div className="relative min-h-screen bg-black pb-16 font-sans selection:bg-copper/40">
-      <Backdrop />
-      <main className="relative z-10 mx-auto w-full max-w-3xl space-y-5 p-4 sm:p-8">
-        <header className="flex items-center justify-between pb-2 pt-4">
-          <Link href="/" className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white">
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path fillRule="evenodd" d="M12.7 4.3a1 1 0 010 1.4L8.4 10l4.3 4.3a1 1 0 01-1.4 1.4l-5-5a1 1 0 010-1.4l5-5a1 1 0 011.4 0z" clipRule="evenodd" />
-            </svg>
-            Calculator
-          </Link>
-          <h1 className="text-xs font-semibold uppercase tracking-[0.3em] text-white/45">Shift History</h1>
-          {signedIn ? (
-            <form action={logoutAction}>
-              <button type="submit" className="rounded-full px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white">
-                Lock
-              </button>
-            </form>
-          ) : (
-            <span className="w-[84px]" />
-          )}
-        </header>
-        {children}
-      </main>
-    </div>
-  );
-}
 
 function SetupNotice({ missing }: { missing: string[] }) {
   return (
@@ -142,6 +98,7 @@ function PaydayCard({ period }: { period: PeriodStatus }) {
               Paid · locked {period.paid.paidAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
             </span>
             <ConfirmAction action={unmarkPaidAction} fields={{ week: period.weekStart }} label="Undo" confirmLabel="Unlock this week" pendingLabel="Unlocking…" />
+            <ConfirmAction action={sendStubsAction} fields={{ week: period.weekStart }} label="Email pay stubs" confirmLabel="Send to anyone not sent yet" pendingLabel="Sending…" />
           </>
         ) : (
           <ConfirmAction
@@ -195,7 +152,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
   const exportHref = `/history/export?range=${range}${period ? `&week=${period.weekStart}` : ""}`;
 
   return (
-    <Shell signedIn>
+    <Shell signedIn section="history">
       <nav className="flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-white/[0.05] p-1.5 backdrop-blur-3xl" aria-label="Date range">
         {(Object.keys(RANGES) as RangeKey[]).map((key) => (
           <Link

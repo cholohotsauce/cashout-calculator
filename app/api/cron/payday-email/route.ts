@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { isDatabaseConfigured, withDb } from "@/lib/db";
+import { audit } from "@/lib/audit";
 import { loadHistory, restaurantTimeZone } from "@/lib/history";
 import { buildPaydayEmail, isEmailConfigured, payrollRecipients, sendEmail } from "@/lib/email";
 import { localToday, periodForPayday, upcomingPayday } from "@/lib/payroll";
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
   try {
     const history = await loadHistory("payday", periodForPayday(payday).weekStart);
     await sendEmail({ to: payrollRecipients(), ...buildPaydayEmail(history) });
+    await audit("system", "email.payday", { payday });
   } catch (err) {
     await withDb((db) => db.query("delete from email_log where kind = 'payday' and key = $1", [payday]));
     console.error("payday email failed", err);

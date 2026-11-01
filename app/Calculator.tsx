@@ -1,10 +1,9 @@
 "use client";
 
-import { ReactNode, useMemo, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  BOH_SHARE,
   CashOut,
   calculateCashOut,
   cashOutToText,
@@ -15,9 +14,10 @@ import {
 } from "@/lib/cashout";
 import { Toast, useToast } from "./components/Toast";
 import { Backdrop } from "./components/Backdrop";
-import { saveCashOutAction } from "./actions";
+import { saveCashOutAction, type SaveInput } from "./actions";
+import { dropSave, isOffline, loadDraft, pendingSaves, queueSave, saveDraft } from "./offline";
 
-type SaveState = { status: "idle" | "saving" | "error" } | { status: "saved"; key: string };
+type SaveState = { status: "idle" | "saving" | "error" } | { status: "saved" | "queued"; key: string };
 
 /**
  * The shift's calendar date. A close that runs past midnight still belongs to the night
@@ -34,7 +34,6 @@ function shiftDate(now = new Date()) {
 let pdfModule: typeof import("@/lib/pdf") | null = null;
 
 const EXTRA = "Extra Person";
-const DEFAULT_STAFF = ["Archie", "Asa", "Chloe", "Daniel", "Devon", "Karyn", "Liam", "Nat", "Wes", EXTRA];
 
 const fieldClass =
   "w-full h-14 rounded-2xl border bg-black/25 px-4 text-lg font-medium tracking-tight text-white shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] placeholder:text-white/25 transition-colors focus:bg-black/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper/60";
@@ -83,7 +82,8 @@ function MoneyInput({ id, label, value, onChange }: { id: string; label: string;
   );
 }
 
-export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
+export function Calculator({ historyEnabled, roster, bohShare }: { historyEnabled: boolean; roster: string[]; bohShare: number }) {
+  const staffOptions = useMemo(() => [...roster, EXTRA], [roster]);
   const [cashTips, setCashTips] = useState("");
   const [cardTips, setCardTips] = useState("");
   const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
@@ -95,8 +95,82 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
   // One id per shift, so saving again after a correction updates the same history entry.
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [save, setSave] = useState<SaveState>({ status: "idle" });
+  const [queued, setQueued] = useState(0);
+  const restored = useRef(false);
   const resultsRef = useRef<HTMLDivElement>(null);
   const { toast, show, dismiss } = useToast();
+
+  // Install support: the service worker keeps the calculator opening with no signal.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
+
+  // Bring back a half-entered cash-out (iPad reloaded, app closed) if it's still the same night.
+  // Read after hydration (localStorage isn't available on the server), so state is set in the effect.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const d = loadDraft();
+    if (d && d.shiftDate === shiftDate()) {
+      setCashTips(d.cashTips);
+      setCardTips(d.cardTips);
+      setSelectedStaff(d.selectedStaff.filter((s) => staffOptions.includes(s)));
+      setStaffHours(d.staffHours);
+      setExtraName(d.extraName);
+      setShiftId(d.shiftId);
+    } else if (d) saveDraft(null);
+    restored.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!restored.current) return;
+    const empty = !cashTips && !cardTips && selectedStaff.length === 0;
+    saveDraft(empty ? null : { shiftDate: shiftDate(), cashTips, cardTips, selectedStaff, staffHours, extraName, shiftId });
+  }, [cashTips, cardTips, selectedStaff, staffHours, extraName, shiftId]);
+
+  // Upload anything saved while offline: on open, when the signal returns, and every minute.
+  const flushing = useRef(false);
+  const flush = useCallback(async () => {
+    const pending = Object.values(pendingSaves());
+    setQueued(pending.length);
+    // One upload run at a time, so a reconnect plus the timer can't send a save twice.
+    if (pending.length === 0 || isOffline() || flushing.current) return;
+    flushing.current = true;
+    let sent = 0;
+    for (const input of pending) {
+      try {
+        const res = await saveCashOutAction(input);
+        // A server answer (even a refusal, like a paid week) means retrying won't help.
+        dropSave(input.id);
+        if (res.ok) sent++;
+        else show(`A cash-out saved offline couldn't upload: ${res.error}`, "error");
+      } catch {
+        break; // still no connection; try again later
+      }
+    }
+    flushing.current = false;
+    const left = Object.keys(pendingSaves()).length;
+    setQueued(left);
+    if (sent > 0) {
+      setSave((s) => (s.status === "queued" ? { status: "saved", key: s.key } : s));
+      show(sent === 1 ? "Offline cash-out uploaded" : `${sent} offline cash-outs uploaded`, "success");
+    }
+  }, [show]);
+
+  useEffect(() => {
+    if (!historyEnabled) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with the device's queue
+    flush();
+    window.addEventListener("online", flush);
+    const t = setInterval(flush, 60_000);
+    return () => {
+      window.removeEventListener("online", flush);
+      clearInterval(t);
+    };
+  }, [historyEnabled, flush]);
 
   // Everything below the inputs is derived live, so the sticky bar can preview the split as you type.
   const live = useMemo(() => {
@@ -105,10 +179,10 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
     const name = (s: string) => (s === EXTRA && extraName.trim() ? extraName.trim() : s);
     const staff = selectedStaff.map((s) => ({ id: s, name: name(s), hours: parseAmount(staffHours[s] ?? "") }));
     const missingHours = staff.filter((s) => s.hours <= 0).map((s) => s.id);
-    const preview = calculateCashOut(cash, card, staff);
+    const preview = calculateCashOut(cash, card, staff, new Date(), bohShare);
     const key = JSON.stringify([cash, card, staff]);
     return { cash, card, staff, missingHours, preview, key };
-  }, [cashTips, cardTips, selectedStaff, staffHours, extraName]);
+  }, [cashTips, cardTips, selectedStaff, staffHours, extraName, bohShare]);
 
   const isStale = results !== null && results.key !== live.key;
 
@@ -116,7 +190,7 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
     setSelectedStaff((prev) =>
       prev.includes(staff)
         ? prev.filter((s) => s !== staff)
-        : DEFAULT_STAFF.filter((s) => s === staff || prev.includes(s)),
+        : staffOptions.filter((s) => s === staff || prev.includes(s)),
     );
   };
 
@@ -148,7 +222,7 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
     setShowErrors(false);
     dismiss();
     import("@/lib/pdf").then((m) => (pdfModule = m)).catch(() => {});
-    setResults({ ...calculateCashOut(live.cash, live.card, live.staff), key: live.key });
+    setResults({ ...calculateCashOut(live.cash, live.card, live.staff, new Date(), bohShare), key: live.key });
     requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
 
@@ -162,6 +236,7 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
     setResults(null);
     setShiftId(null);
     setSave({ status: "idle" });
+    saveDraft(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -186,16 +261,25 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
     setShiftId(id);
     setSave({ status: "saving" });
     const key = results.key;
+    const input: SaveInput = {
+      id,
+      cash: live.cash,
+      card: live.card,
+      staff: live.staff.map(({ name, hours }) => ({ name, hours })),
+      shiftDate: shiftDate(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+    const keepOnDevice = () => {
+      queueSave(input);
+      setQueued(Object.keys(pendingSaves()).length);
+      setSave({ status: "queued", key });
+      show("No signal. Saved on this iPad, it will upload when back online.", "success");
+    };
+    if (isOffline()) return keepOnDevice();
     try {
-      const res = await saveCashOutAction({
-        id,
-        cash: live.cash,
-        card: live.card,
-        staff: live.staff.map(({ name, hours }) => ({ name, hours })),
-        shiftDate: shiftDate(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      });
+      const res = await saveCashOutAction(input);
       if (res.ok) {
+        dropSave(id);
         setSave({ status: "saved", key });
         show(shiftId ? "Saved shift updated" : "Saved to shift history", "success");
       } else {
@@ -203,12 +287,13 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
         show(res.error, "error");
       }
     } catch {
-      setSave({ status: "error" });
-      show("Couldn't save. Check the connection and try again.", "error");
+      // The request never reached the server: keep it and retry in the background.
+      keepOnDevice();
     }
   };
 
-  const isSaved = save.status === "saved" && results !== null && save.key === results.key;
+  const isSaved = (save.status === "saved" || save.status === "queued") && results !== null && save.key === results.key;
+  const isQueued = isSaved && save.status === "queued";
 
   const savePdf = async () => {
     if (!results) return;
@@ -244,6 +329,12 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
           <h1 className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/45">Tip Cash-Out</h1>
         </header>
 
+        {queued > 0 && (
+          <p role="status" className="mx-auto w-fit rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-1.5 text-center text-sm text-amber-100">
+            {queued === 1 ? "1 cash-out" : `${queued} cash-outs`} saved on this iPad, waiting for signal to upload
+          </p>
+        )}
+
         <motion.div {...cardMotion()}>
           <Card step={1} title="Collected tips" aside={live.preview.totalTips > 0 && formatMoney(live.preview.totalTips)}>
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
@@ -257,7 +348,7 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
         <motion.div {...cardMotion(0.08)}>
           <Card step={2} title="FOH staff on shift" aside={selectedStaff.length > 0 && `${selectedStaff.length} selected`}>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-              {DEFAULT_STAFF.map((staff) => {
+              {staffOptions.map((staff) => {
                 const isSelected = selectedStaff.includes(staff);
                 return (
                   <button
@@ -391,7 +482,7 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
 
               <dl className="mt-6 grid grid-cols-3 gap-2.5">
                 {[
-                  [`BOH ${Math.round(BOH_SHARE * 100)}%`, formatMoney(results.bohTips)],
+                  [`BOH ${Math.round(results.bohShare * 100)}%`, formatMoney(results.bohTips)],
                   ["FOH pool", formatMoney(results.fohTips)],
                   ["Per hour", formatMoney(results.fohRate)],
                 ].map(([label, value]) => (
@@ -428,7 +519,9 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
                   onClick={saveToHistory}
                   disabled={isStale || isSaved || save.status === "saving"}
                   className={`mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition-colors disabled:cursor-not-allowed ${
-                    isSaved
+                    isQueued
+                      ? "border-amber-300/30 bg-amber-300/10 text-amber-100"
+                      : isSaved
                       ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
                       : "border-copper/40 bg-copper/20 text-copper-light hover:bg-copper/30 disabled:opacity-40"
                   }`}
@@ -442,7 +535,9 @@ export function Calculator({ historyEnabled }: { historyEnabled: boolean }) {
                   </svg>
                   {save.status === "saving"
                     ? "Saving…"
-                    : isSaved
+                    : isQueued
+                      ? "Saved on this iPad · uploads when online"
+                      : isSaved
                       ? "Saved to shift history"
                       : shiftId
                         ? "Update saved shift"

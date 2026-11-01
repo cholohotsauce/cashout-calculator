@@ -8,12 +8,14 @@ type History = Awaited<ReturnType<typeof loadHistory>>;
 
 export const appUrl = () => (process.env.APP_URL ?? "https://acecashout.com").replace(/\/$/, "");
 export const isEmailConfigured = () => Boolean(process.env.RESEND_API_KEY && process.env.PAYROLL_EMAIL);
+/** Pay stubs only need the sending key; they go to the addresses on the roster. */
+export const canSendEmail = () => Boolean(process.env.RESEND_API_KEY);
 
 const money = (c: number) => formatMoney(c / 100);
 const hours = (h: number) => `${+h.toFixed(2)}`;
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const C = {
+export const C = {
   ink: "#1c1917",
   muted: "#78716c",
   faint: "#a8a29e",
@@ -26,7 +28,7 @@ const C = {
   warnLine: "#fcd34d",
   warnInk: "#92400e",
 };
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+export const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 
 /** The Thursday email Rafa gets: who to pay on Friday, for which week, and anything to double-check. */
 export function buildPaydayEmail(h: History) {
