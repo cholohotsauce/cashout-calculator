@@ -1,10 +1,11 @@
+/** Default kitchen share; the live value is a setting managers can change. */
 export const BOH_SHARE = 0.3;
-export const FOH_SHARE = 1 - BOH_SHARE;
 
 export type StaffPayout = { name: string; hours: number; amount: number };
 
 export type CashOut = {
   dateTime: string;
+  bohShare: number;
   cash: number;
   card: number;
   totalTips: number;
@@ -45,28 +46,57 @@ export function formatDateTime(date = new Date()) {
   });
 }
 
+export const toCents = (dollars: number) => Math.round(dollars * 100);
+
+/**
+ * Splits `totalCents` by `weights` so the parts are whole cents that add back up to the
+ * total exactly (largest-remainder method; ties go to the earlier entry).
+ */
+export function allocateCents(totalCents: number, weights: number[]) {
+  const sum = weights.reduce((a, w) => a + w, 0);
+  if (sum <= 0 || totalCents <= 0) return weights.map(() => 0);
+  const exact = weights.map((w) => (totalCents * w) / sum);
+  const parts = exact.map(Math.floor);
+  let left = totalCents - parts.reduce((a, p) => a + p, 0);
+  const order = exact.map((x, i) => ({ i, r: x - Math.floor(x) })).sort((a, b) => b.r - a.r || a.i - b.i);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    parts[i] += 1;
+    left -= 1;
+  }
+  return parts;
+}
+
+/**
+ * Every dollar figure is rounded to the cent, and the staff payouts plus BOH always add up to
+ * exactly the tips collected, so what's printed is what's in the envelope.
+ */
 export function calculateCashOut(
   cash: number,
   card: number,
   staff: { name: string; hours: number }[],
   date = new Date(),
+  bohShare = BOH_SHARE,
 ): CashOut {
-  const totalTips = cash + card;
-  const bohTips = totalTips * BOH_SHARE;
-  const fohTips = totalTips * FOH_SHARE;
+  const cashCents = toCents(cash);
+  const cardCents = toCents(card);
+  const totalCents = cashCents + cardCents;
   const totalHours = staff.reduce((sum, s) => sum + s.hours, 0);
-  const fohRate = totalHours > 0 ? fohTips / totalHours : 0;
+  const bohCents = Math.round(totalCents * bohShare);
+  const fohCents = totalCents - bohCents;
+  const shares = allocateCents(fohCents, staff.map((s) => s.hours));
 
   return {
     dateTime: formatDateTime(date),
-    cash,
-    card,
-    totalTips,
-    bohTips,
-    fohTips,
+    bohShare,
+    cash: cashCents / 100,
+    card: cardCents / 100,
+    totalTips: totalCents / 100,
+    bohTips: bohCents / 100,
+    fohTips: fohCents / 100,
     totalHours,
-    fohRate,
-    staffTips: staff.map((s) => ({ ...s, amount: s.hours * fohRate })),
+    fohRate: totalHours > 0 ? fohCents / 100 / totalHours : 0,
+    staffTips: staff.map((s, i) => ({ ...s, amount: shares[i] / 100 })),
   };
 }
 
@@ -77,7 +107,7 @@ export function cashOutToText(r: CashOut) {
     ``,
     `Total tips: ${formatMoney(r.totalTips)}`,
     `  Cash ${formatMoney(r.cash)} · Card ${formatMoney(r.card)}`,
-    `BOH (kitchen, ${Math.round(BOH_SHARE * 100)}%): ${formatMoney(r.bohTips)}`,
+    `BOH (kitchen, ${Math.round(r.bohShare * 100)}%): ${formatMoney(r.bohTips)}`,
     `FOH pool: ${formatMoney(r.fohTips)}`,
     `FOH rate: ${formatMoney(r.fohRate)}/hr over ${formatHours(r.totalHours)}`,
     `--------------------------`,
