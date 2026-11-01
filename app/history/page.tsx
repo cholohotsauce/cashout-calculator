@@ -5,9 +5,11 @@ import type { ReactNode } from "react";
 import { formatHours, formatMoney } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
 import { isManager, isPinConfigured } from "@/lib/auth";
-import { RANGES, isRangeKey, loadHistory, type RangeKey, type SavedShift } from "@/lib/history";
+import { RANGES, isRangeKey, loadHistory, type PeriodStatus, type RangeKey, type SavedShift } from "@/lib/history";
+import { addDays, formatDay, formatRange, mondayOf } from "@/lib/payroll";
 import { Backdrop } from "../components/Backdrop";
-import { logoutAction } from "../actions";
+import { logoutAction, markPaidAction, unmarkPaidAction } from "../actions";
+import { ConfirmAction } from "./ConfirmAction";
 import { PinForm } from "./PinForm";
 import { DeleteShiftButton } from "./DeleteShiftButton";
 
@@ -93,6 +95,72 @@ function rangeLabel(from: string | null, to: string | null) {
   return `${f} – ${t}`;
 }
 
+function PaydayCard({ period }: { period: PeriodStatus }) {
+  const nav = (weekStart: string, label: string, d: string) => (
+    <Link
+      href={`/history?range=payday&week=${weekStart}`}
+      aria-label={label}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/60 transition-colors hover:bg-white/15 hover:text-white"
+    >
+      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+        <path fillRule="evenodd" d={d} clipRule="evenodd" />
+      </svg>
+    </Link>
+  );
+  return (
+    <section className="rounded-[28px] border border-copper/30 bg-gradient-to-b from-copper/[0.14] to-white/[0.04] p-5 shadow-xl backdrop-blur-3xl sm:p-6">
+      <div className="flex items-center gap-3">
+        {nav(addDays(period.weekStart, -7), "Previous payday", "M12.7 4.3a1 1 0 010 1.4L8.4 10l4.3 4.3a1 1 0 01-1.4 1.4l-5-5a1 1 0 010-1.4l5-5a1 1 0 011.4 0z")}
+        <div className="min-w-0 flex-1 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-copper-light">
+            {period.isCurrent ? "This Friday's payday" : "Payday"}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-white">{formatDay(period.payday, { weekday: "long", month: "long", day: "numeric" })}</h2>
+          <p className="mt-1 text-sm text-white/55">Tips earned {formatRange(period.weekStart, period.weekEnd)}</p>
+        </div>
+        {nav(addDays(period.weekStart, 7), "Next payday", "M7.3 15.7a1 1 0 010-1.4l4.3-4.3-4.3-4.3a1 1 0 011.4-1.4l5 5a1 1 0 010 1.4l-5 5a1 1 0 01-1.4 0z")}
+      </div>
+
+      {period.missing.length > 0 && (
+        <div className="mt-5 flex gap-3 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+          <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path fillRule="evenodd" d="M8.3 3.1a2 2 0 013.4 0l6.1 10.6A2 2 0 0116.1 17H3.9a2 2 0 01-1.7-3.3L8.3 3.1zM10 7a1 1 0 00-1 1v3a1 1 0 102 0V8a1 1 0 00-1-1zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+          </svg>
+          <p>
+            No cash-out saved for <strong>{period.missing.map((d) => formatDay(d)).join(", ")}</strong>. If you were open, those tips aren&apos;t counted yet.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
+        {period.paid ? (
+          <>
+            <span className="flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200">
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+              </svg>
+              Paid · locked {period.paid.paidAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </span>
+            <ConfirmAction action={unmarkPaidAction} fields={{ week: period.weekStart }} label="Undo" confirmLabel="Unlock this week" pendingLabel="Unlocking…" />
+          </>
+        ) : (
+          <ConfirmAction
+            action={markPaidAction}
+            fields={{ week: period.weekStart }}
+            label="Mark week as paid"
+            confirmLabel="Confirm: tips paid out"
+            pendingLabel="Saving…"
+            tone="primary"
+          />
+        )}
+        <Link href={`/history/email?week=${period.weekStart}`} className="rounded-full px-4 py-2 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white">
+          Preview Thursday email
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export default async function HistoryPage({ searchParams }: PageProps<"/history">) {
   // Always render per request: the setup state comes from env vars and history is private.
   await connection();
@@ -120,9 +188,11 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
     );
   }
 
-  const rangeParam = (await searchParams).range;
-  const range: RangeKey = isRangeKey(rangeParam) ? rangeParam : "week";
-  const { from, to, shifts, staffTotals, totals } = await loadHistory(range);
+  const params = await searchParams;
+  const range: RangeKey = isRangeKey(params.range) ? params.range : "payday";
+  const week = typeof params.week === "string" ? params.week : undefined;
+  const { from, to, shifts, staffTotals, totals, period, paidWeeks } = await loadHistory(range, week);
+  const exportHref = `/history/export?range=${range}${period ? `&week=${period.weekStart}` : ""}`;
 
   return (
     <Shell signedIn>
@@ -130,7 +200,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
         {(Object.keys(RANGES) as RangeKey[]).map((key) => (
           <Link
             key={key}
-            href={key === "week" ? "/history" : `/history?range=${key}`}
+            href={key === "payday" ? "/history" : `/history?range=${key}`}
             aria-current={key === range ? "page" : undefined}
             className={`flex-1 whitespace-nowrap rounded-full px-3 py-2 text-center text-sm font-medium transition-colors ${
               key === range ? "bg-white/90 text-black" : "text-white/60 hover:bg-white/10 hover:text-white"
@@ -141,11 +211,13 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
         ))}
       </nav>
 
+      {period && <PaydayCard period={period} />}
+
       <div className="flex items-center justify-between px-1">
-        <p className="text-sm text-white/50">{rangeLabel(from, to)}</p>
+        <p className="text-sm text-white/50">{period ? "Totals for this pay week" : rangeLabel(from, to)}</p>
         {shifts.length > 0 && (
           <a
-            href={`/history/export?range=${range}`}
+            href={exportHref}
             className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -160,7 +232,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
         {[
           ["Total tips", cents(totals.totalCents)],
           ["BOH", cents(totals.bohCents)],
-          ["FOH", cents(totals.fohCents)],
+          [period ? "FOH to pay" : "FOH", cents(totals.fohCents)],
           ["Shifts", String(totals.shifts)],
         ].map(([label, value]) => (
           <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-4 backdrop-blur-3xl">
@@ -176,7 +248,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
         </Panel>
       ) : (
         <>
-          <Panel title="FOH totals" aside={formatHours(totals.hours)}>
+          <Panel title={period ? "Who gets paid" : "FOH totals"} aside={formatHours(totals.hours)}>
             <div className="-mx-1 overflow-x-auto">
               <table className="w-full text-left text-sm tabular-nums">
                 <thead className="text-[11px] uppercase tracking-wider text-white/40">
@@ -236,7 +308,11 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
                         ))}
                       </ul>
                       <div className="mt-3 flex justify-end">
-                        <DeleteShiftButton id={s.id} />
+                        {paidWeeks.includes(mondayOf(s.shiftDate)) ? (
+                          <span className="px-3 py-1.5 text-sm text-white/35">Paid week · locked</span>
+                        ) : (
+                          <DeleteShiftButton id={s.id} />
+                        )}
                       </div>
                     </div>
                   </details>

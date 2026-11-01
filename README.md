@@ -24,6 +24,7 @@ A small web app for splitting a restaurant shift's tips. Enter the cash and card
 - A results card that flags when inputs changed after calculating.
 - Copy to clipboard, share to WhatsApp, or save a formatted PDF report (jsPDF loads only when you first save).
 - A "+ Extra" slot for someone who isn't on the regular roster.
+- **Payday for the owner**: tips for a Mon–Sun week are paid on the Friday two weeks after it starts. History opens on that payday with who gets what, flags nights with no saved cash-out, and lets the owner mark the week paid, which locks its shifts. Every Thursday morning an email with the totals and a CSV goes out automatically (`vercel.json` cron), and History has a preview of it.
 - **Shift history** (needs the backend below): save a cash-out with one tap, correct and re-save it, then browse past shifts by week or month, see each person's totals and average hourly, and export a payroll-ready CSV. Behind a manager PIN.
 - Mobile first: large tap targets, a sticky action bar, safe-area padding and reduced-motion support.
 
@@ -50,6 +51,10 @@ lib/pdf.ts                PDF report layout
 | `DATABASE_URL` | Postgres connection string. Adding Neon under the Vercel project's **Storage** tab sets it. |
 | `MANAGER_PIN` | The PIN for Shift history. Changing it signs everyone out. |
 | `SESSION_SECRET` | Optional key for signing sessions. |
+| `CRON_SECRET` | Lets Vercel Cron call the Thursday payday email. |
+| `RESEND_API_KEY` | [Resend](https://resend.com) key for sending email (acecashout.com verified as a sender). |
+| `PAYROLL_EMAIL` | Who gets the payday email (comma-separate several). |
+| `CLOSED_DAYS` | Optional, e.g. `mon`: days that never count as a missing cash-out. |
 
 Without the first two the calculator works exactly as before and the History button stays hidden. The tables are created on first use; `npm run db:migrate` does it by hand.
 

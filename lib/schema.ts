@@ -34,4 +34,19 @@ create table if not exists login_attempts (
 );
 
 create index if not exists login_attempts_ip_idx on login_attempts (ip, attempted_at);
+
+-- A pay week (Mon–Sun, keyed by its Monday) that has been paid out. Its shifts are locked.
+create table if not exists pay_periods (
+  week_start   date primary key check (extract(isodow from week_start) = 1),
+  paid_at      timestamptz not null default now(),
+  total_cents  integer not null     -- what the week added up to when it was marked paid
+);
+
+-- Emails already sent, so a retried cron job never sends the same one twice.
+create table if not exists email_log (
+  kind     text not null,
+  key      text not null,
+  sent_at  timestamptz not null default now(),
+  primary key (kind, key)
+);
 `;

@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { calculateCashOut } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
-import { deleteShift, saveShift } from "@/lib/history";
+import { PaidWeekError, deleteShift, markWeekPaid, saveShift, unmarkWeekPaid } from "@/lib/history";
+import { isIsoDate } from "@/lib/payroll";
 import { isManager, signIn, signOut } from "@/lib/auth";
 
 export type SaveInput = {
@@ -65,6 +66,7 @@ export async function saveCashOutAction(input: SaveInput): Promise<SaveResult> {
   try {
     await saveShift(id, result, shiftDate, timeZone);
   } catch (err) {
+    if (err instanceof PaidWeekError) return { ok: false, error: "That week has already been paid, so it can't change. Ask the manager." };
     console.error("saveCashOut failed", err);
     return { ok: false, error: "Couldn't reach the database. Try again in a moment." };
   }
@@ -91,6 +93,27 @@ export async function deleteShiftAction(formData: FormData) {
   if (!(await isManager())) throw new Error("Unauthorized");
   const id = String(formData.get("id") ?? "");
   if (!UUID.test(id)) return;
-  await deleteShift(id);
+  try {
+    await deleteShift(id);
+  } catch (err) {
+    if (!(err instanceof PaidWeekError)) throw err;
+  }
+  revalidatePath("/history");
+}
+
+/** Marks a pay week as paid, which locks its shifts. */
+export async function markPaidAction(formData: FormData) {
+  if (!(await isManager())) throw new Error("Unauthorized");
+  const week = formData.get("week");
+  if (!isIsoDate(week)) return;
+  await markWeekPaid(week);
+  revalidatePath("/history");
+}
+
+export async function unmarkPaidAction(formData: FormData) {
+  if (!(await isManager())) throw new Error("Unauthorized");
+  const week = formData.get("week");
+  if (!isIsoDate(week)) return;
+  await unmarkWeekPaid(week);
   revalidatePath("/history");
 }
