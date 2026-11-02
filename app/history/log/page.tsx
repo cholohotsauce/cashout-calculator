@@ -48,7 +48,7 @@ function describe(e: AuditEntry): { text: string; tone: Tone } {
     case "settings.boh_share":
       return { text: `Kitchen share changed from ${+(Number(d.from) * 100).toFixed(1)}% to ${+(Number(d.to) * 100).toFixed(1)}%`, tone: "warn" };
     case "manager.signed_in":
-      return { text: "Manager unlocked History", tone: "neutral" };
+      return { text: "Unlocked History", tone: "neutral" };
     case "email.payday":
       return { text: `Payday email sent for ${day(d.payday)}`, tone: "neutral" };
     case "email.stubs":
@@ -116,7 +116,7 @@ export default async function LogPage() {
                       <p className="text-[15px] text-white/90">{text}</p>
                       <p className="text-xs text-white/40">
                         {e.at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone })} ·{" "}
-                        {e.actor === "calculator" ? "from the calculator" : e.actor === "manager" ? "by a manager" : "automatic"}
+                        {e.actor === "calculator" ? "from the calculator" : e.actor === "manager" ? `by ${typeof e.detail.by === "string" ? e.detail.by : "a manager"}` : "automatic"}
                       </p>
                     </div>
                   </li>
