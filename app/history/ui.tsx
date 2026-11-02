@@ -32,7 +32,7 @@ export async function Shell({ children, section, signedIn = false, title = "Shif
   return (
     <div className="relative min-h-screen bg-black pb-16 font-sans selection:bg-copper/40">
       <Backdrop />
-      <main className="relative z-10 mx-auto w-full max-w-3xl space-y-5 p-4 sm:p-8">
+      <main className="relative z-10 mx-auto w-full max-w-3xl space-y-5 p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:p-8 sm:pt-[max(2rem,env(safe-area-inset-top))]">
         <header className="flex items-center justify-between pb-1 pt-4">
           <Link href="/" className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white">
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>

@@ -201,7 +201,10 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
 
       {shifts.length === 0 ? (
         <Panel>
-          <p className="py-6 text-center text-white/50">No cash-outs saved in this range yet.</p>
+          <div className="py-6 text-center">
+            <p className="text-white/60">No cash-outs saved in this range yet.</p>
+            <p className="mt-1 text-sm text-white/40">Either it was a quiet week, or nobody pressed the glowing Save button.</p>
+          </div>
         </Panel>
       ) : (
         <>
