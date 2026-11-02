@@ -32,8 +32,6 @@ const TIERS: { below: number; lines: string[] }[] = [
   {
     below: Infinity,
     lines: [
-      "Big night. Maybe don't tell the landlord.",
-      "Huge shift. Somebody check the bar for a bachelorette party.",
       "Legendary. Frame this one.",
     ],
   },

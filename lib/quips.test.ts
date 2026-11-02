@@ -8,7 +8,7 @@ test("same cash-out always gets the same line", () => {
 
 test("tiers follow the hourly rate", () => {
   assert.match(cashOutQuip(50, 2, "x"), /Slow|Quiet|Character/);
-  assert.match(cashOutQuip(5000, 80, "x"), /Big|Huge|Legendary/);
+  assert.match(cashOutQuip(5000, 80, "x"), /Legendary/);
 });
 
 test("exact-total easter eggs win over the tier", () => {
