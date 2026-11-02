@@ -4,16 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 export type ToastTone = "info" | "success" | "error";
-type ToastState = { id: number; message: string; tone: ToastTone } | null;
+type ToastAction = { label: string; onClick: () => void };
+type ToastState = { id: number; message: string; tone: ToastTone; action?: ToastAction } | null;
 
 export function useToast() {
   const [toast, setToast] = useState<ToastState>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const show = useCallback((message: string, tone: ToastTone = "info") => {
+  const show = useCallback((message: string, tone: ToastTone = "info", action?: ToastAction) => {
     if (timer.current) clearTimeout(timer.current);
-    setToast({ id: Date.now(), message, tone });
-    timer.current = setTimeout(() => setToast(null), 2800);
+    setToast({ id: Date.now(), message, tone, action });
+    // A toast with a button (like Undo) stays long enough to actually reach for it.
+    timer.current = setTimeout(() => setToast(null), action ? 6000 : 2800);
   }, []);
 
   const dismiss = useCallback(() => {
@@ -53,6 +55,15 @@ export function Toast({ toast }: { toast: ToastState }) {
           >
             <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[toast.tone]}`} />
             {toast.message}
+            {toast.action && (
+              <button
+                type="button"
+                onClick={toast.action.onClick}
+                className="pointer-events-auto -my-1.5 -mr-2 rounded-full bg-white/15 px-3.5 py-1.5 font-semibold text-copper-light transition-colors hover:bg-white/25"
+              >
+                {toast.action.label}
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
