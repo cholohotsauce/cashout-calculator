@@ -60,7 +60,7 @@ const INSIDE: { when: (c: Ctx) => boolean; line: string }[] = [
   // Big Dog is a Monday regular, so he shows up most on Mondays and now and then otherwise.
   { when: (c) => c.weekday === 1 || c.h % 6 === 0, line: "Big Dog only burped twice tonight." },
   { when: (c) => c.names.has("daniel"), line: "Daniel did not find his future wife tonight." },
-  { when: (c) => c.names.has("nat") && c.names.has("archie"), line: "Nat only roasted Archie once tonight. Good shift then!" },
+  { when: (c) => c.names.has("nat") && c.names.has("archie"), line: "Nat only called Archie an idiot once tonight. Good shift then!" },
 ];
 
 /** Small string hash so the same cash-out always gets the same line. */

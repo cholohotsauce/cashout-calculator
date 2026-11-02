@@ -19,7 +19,7 @@ test("name jokes only show when those people are on the tip-out", () => {
   assert.ok(!lines({ totalTips: 500, fohRate: 20, names: ["Asa"] }).some((l) => /Daniel|Nat/.test(l)));
   assert.ok(!lines({ totalTips: 500, fohRate: 20, names: ["Nat"] }).some((l) => /Nat only/.test(l)));
   const both = lines({ totalTips: 500, fohRate: 20, names: ["Nat", " archie "] });
-  assert.ok(both.some((l) => /Nat only roasted Archie/.test(l)));
+  assert.ok(both.some((l) => /Nat only called Archie an idiot/.test(l)));
   const daniel = lines({ totalTips: 500, fohRate: 20, names: ["Daniel"] });
   const share = daniel.filter((l) => /Daniel/.test(l)).length / daniel.length;
   assert.ok(share > 0.05 && share < 0.4, `Daniel joke should be occasional, got ${share}`);
