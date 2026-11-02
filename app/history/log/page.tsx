@@ -101,7 +101,10 @@ export default async function LogPage() {
 
       {entries.length === 0 ? (
         <Panel>
-          <p className="py-6 text-center text-white/50">Nothing has changed yet.</p>
+          <div className="py-6 text-center">
+            <p className="text-white/60">Nothing has changed yet.</p>
+            <p className="mt-1 text-sm text-white/40">A suspiciously honest crew.</p>
+          </div>
         </Panel>
       ) : (
         [...groups].map(([date, items]) => (
