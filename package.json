@@ -12,6 +12,7 @@
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.ts"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "@vercel/functions": "^3.10.5",
     "framer-motion": "^13.1.0",
     "jspdf": "^4.2.1",
