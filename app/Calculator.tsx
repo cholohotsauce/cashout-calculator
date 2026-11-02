@@ -556,7 +556,13 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
                     transition={{ delay: 0.7, duration: 0.4 }}
                     className="mt-3 text-sm italic text-copper-light/80"
                   >
-                    {cashOutQuip(results.totalTips, results.fohRate, results.key)}
+                    {cashOutQuip({
+                      totalTips: results.totalTips,
+                      fohRate: results.fohRate,
+                      names: results.staffTips.map((s) => s.name),
+                      weekday: new Date(`${shiftDate()}T12:00:00`).getDay(),
+                      seed: results.key,
+                    })}
                   </motion.p>
                 </AnimatePresence>
               </div>
