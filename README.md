@@ -71,14 +71,14 @@ lib/pdf.ts                PDF report layout
 | Env var | |
 | --- | --- |
 | `DATABASE_URL` | Postgres connection string. Adding Neon under the Vercel project's **Storage** tab sets it. |
-| `MANAGER_PIN` | The PIN for Shift history. Changing it signs everyone out. |
+| `MANAGER_PINS` | Each manager's own PIN, e.g. `Archie:1111,Rafa:2222,Asa:3333`. The change log names who made each change. (A single shared `MANAGER_PIN` also works.) |
 | `SESSION_SECRET` | Optional key for signing sessions and pay stub links. |
 | `CRON_SECRET` | Lets Vercel Cron call the Thursday payday email. |
 | `RESEND_API_KEY` | [Resend](https://resend.com) key for sending email (acecashout.com verified as a sender). Pay stubs need only this. |
 | `PAYROLL_EMAIL` | Who gets the payday email (comma-separate several). |
 | `CLOSED_DAYS` | Optional, e.g. `mon`: days that never count as a missing cash-out. |
 
-Without the first two the calculator works exactly as before and the History button stays hidden. The tables are created on first use; `npm run db:migrate` does it by hand.
+Without a database and a PIN the calculator works exactly as before and the History button stays hidden. The tables are created on first use; `npm run db:migrate` does it by hand.
 
 Anyone using the calculator can save a cash-out (that's the iPad at close); the server recalculates it from the raw inputs instead of trusting the browser's totals. Reading, exporting and deleting history need the PIN, which locks an IP out for 15 minutes after 5 wrong tries.
 

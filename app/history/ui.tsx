@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Backdrop } from "../components/Backdrop";
 import { logoutAction } from "../actions";
+import { currentManager } from "@/lib/auth";
 
 export function Panel({ title, aside, children, className = "" }: { title?: string; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -26,7 +27,8 @@ const SECTIONS = [
 export type Section = (typeof SECTIONS)[number]["key"];
 
 /** Page frame for the manager area: back to the calculator, section links, and Lock. */
-export function Shell({ children, section, signedIn = false, title = "Shift History" }: { children: ReactNode; section?: Section; signedIn?: boolean; title?: string }) {
+export async function Shell({ children, section, signedIn = false, title = "Shift History" }: { children: ReactNode; section?: Section; signedIn?: boolean; title?: string }) {
+  const who = signedIn ? await currentManager() : null;
   return (
     <div className="relative min-h-screen bg-black pb-16 font-sans selection:bg-copper/40">
       <Backdrop />
@@ -41,8 +43,8 @@ export function Shell({ children, section, signedIn = false, title = "Shift Hist
           <h1 className="text-xs font-semibold uppercase tracking-[0.3em] text-white/45">{title}</h1>
           {signedIn ? (
             <form action={logoutAction}>
-              <button type="submit" className="rounded-full px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white">
-                Lock
+              <button type="submit" title="Lock History on this device" className="rounded-full px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white">
+                {who && who !== "Manager" ? <span className="text-white/40">{who} · </span> : null}Lock
               </button>
             </form>
           ) : (

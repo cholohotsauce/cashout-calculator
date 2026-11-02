@@ -9,15 +9,38 @@ const SESSION_DAYS = 7;
 const MAX_FAILURES = 5;
 const LOCKOUT_MINUTES = 15;
 
-export const isPinConfigured = () => Boolean(process.env.MANAGER_PIN);
+export type Manager = { name: string; pin: string };
 
-/** The signing key changes with the PIN, so changing MANAGER_PIN signs everyone out. */
-function signingKey() {
-  const secret = process.env.SESSION_SECRET ?? process.env.DATABASE_URL ?? "";
-  return createHash("sha256").update(`ace-session:${secret}:${process.env.MANAGER_PIN ?? ""}`).digest();
+/**
+ * Managers and their PINs. MANAGER_PINS lists each person as "Name:PIN", separated by commas
+ * (e.g. "Archie:1111,Rafa:2222,Asa:3333"), so the change log can say who did what.
+ * A lone MANAGER_PIN still works and signs in as "Manager".
+ */
+export function managers(): Manager[] {
+  const list = (process.env.MANAGER_PINS ?? "")
+    .split(",")
+    .map((entry) => {
+      const i = entry.lastIndexOf(":");
+      return { name: entry.slice(0, i).trim(), pin: entry.slice(i + 1).trim() };
+    })
+    .filter((m) => m.name && m.pin);
+  if (list.length) return list;
+  return process.env.MANAGER_PIN ? [{ name: "Manager", pin: process.env.MANAGER_PIN.trim() }] : [];
 }
 
-const sign = (payload: string) => createHmac("sha256", signingKey()).update(payload).digest("base64url");
+export const isPinConfigured = () => managers().length > 0;
+
+function signingKey() {
+  const secret = process.env.SESSION_SECRET ?? process.env.DATABASE_URL ?? "";
+  return createHash("sha256").update(`ace-session:${secret}`).digest();
+}
+
+const digest = (v: string) => createHash("sha256").update(v).digest("hex");
+
+// Each session is tied to that person's current PIN, so changing or removing someone's PIN
+// signs only them out.
+const sign = (expires: string, m: Manager) =>
+  createHmac("sha256", signingKey()).update(`manager:${expires}:${m.name}:${digest(m.pin)}`).digest("base64url");
 
 function safeEqual(a: string, b: string) {
   const x = Buffer.from(a);
@@ -25,14 +48,20 @@ function safeEqual(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+/** The manager this request is signed in as, or null. */
+export async function currentManager(): Promise<string | null> {
+  const token = (await cookies()).get(COOKIE)?.value;
+  if (!token) return null;
+  const [expires, encodedName, signature] = token.split(".");
+  if (!expires || !encodedName || !signature || Number(expires) < Date.now()) return null;
+  const name = Buffer.from(encodedName, "base64url").toString();
+  const m = managers().find((x) => x.name === name);
+  return m && safeEqual(signature, sign(expires, m)) ? m.name : null;
+}
+
 /** Whether this request carries a valid, unexpired manager session. */
 export async function isManager() {
-  if (!isPinConfigured()) return false;
-  const token = (await cookies()).get(COOKIE)?.value;
-  if (!token) return false;
-  const [expires, signature] = token.split(".");
-  if (!expires || !signature || Number(expires) < Date.now()) return false;
-  return safeEqual(signature, sign(`manager:${expires}`));
+  return (await currentManager()) !== null;
 }
 
 export async function clientIp() {
@@ -44,8 +73,8 @@ export type LoginResult = { ok: true } | { ok: false; error: string };
 
 /** Checks the PIN, locking an IP out for a while after repeated wrong guesses. */
 export async function signIn(pin: string): Promise<LoginResult> {
-  const expected = process.env.MANAGER_PIN;
-  if (!expected) return { ok: false, error: "No manager PIN has been set up yet." };
+  const all = managers();
+  if (!all.length) return { ok: false, error: "No manager PIN has been set up yet." };
 
   const ip = await clientIp();
   const failures = await withDb(async (db) => {
@@ -59,9 +88,12 @@ export async function signIn(pin: string): Promise<LoginResult> {
     return { ok: false, error: `Too many wrong PINs. Try again in ${LOCKOUT_MINUTES} minutes.` };
   }
 
-  // Compare digests so the check takes the same time whatever the PIN's length.
-  const digest = (v: string) => createHash("sha256").update(v).digest("hex");
-  if (!safeEqual(digest(pin.trim()), digest(expected))) {
+  // Compare digests against every PIN so the check takes the same time whoever matches.
+  const given = digest(pin.trim());
+  const matches = all.filter((m) => safeEqual(given, digest(m.pin)));
+  if (matches.length > 1) return { ok: false, error: "Two managers share that PIN. Give each person their own." };
+  const who = matches[0];
+  if (!who) {
     await withDb(async (db) => {
       await db.query("insert into login_attempts (ip) values ($1)", [ip]);
       await db.query("delete from login_attempts where attempted_at < now() - interval '1 day'");
@@ -71,14 +103,14 @@ export async function signIn(pin: string): Promise<LoginResult> {
   }
 
   await withDb((db) => db.query("delete from login_attempts where ip = $1", [ip]));
-  await audit("manager", "manager.signed_in");
-  const expires = Date.now() + SESSION_DAYS * 86_400_000;
-  (await cookies()).set(COOKIE, `${expires}.${sign(`manager:${expires}`)}`, {
+  await audit("manager", "manager.signed_in", { by: who.name });
+  const expires = String(Date.now() + SESSION_DAYS * 86_400_000);
+  (await cookies()).set(COOKIE, `${expires}.${Buffer.from(who.name).toString("base64url")}.${sign(expires, who)}`, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    expires: new Date(expires),
+    expires: new Date(Number(expires)),
   });
   return { ok: true };
 }
