@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allocateCents, calculateCashOut } from "./cashout.ts";
+import { allocateCents, calculateCashOut, formatDateTime, pdfFileName } from "./cashout.ts";
 
 const cents = (d: number) => Math.round(d * 100);
 
@@ -45,4 +45,16 @@ test("float inputs don't drift", () => {
   const r = calculateCashOut(0.1, 0.2, [{ name: "A", hours: 1 }]);
   assert.equal(r.totalTips, 0.3);
   assert.equal(r.bohTips + r.fohTips, 0.3);
+});
+
+// These run in the test process's zone; pin it so the clock times below are local.
+process.env.TZ = "America/New_York";
+
+test("a cash-out after midnight is labelled and filed under the shift's night", () => {
+  const late = new Date("2026-11-03T05:45:00Z"); // Tue 12:45am
+  assert.equal(formatDateTime(late), "Monday, November 2, 2026 shift · cashed out 12:45 AM Tuesday");
+  assert.equal(pdfFileName(late), "November 2 2026 12-45 AM.pdf");
+  const evening = new Date("2026-11-03T03:30:00Z"); // Mon 10:30pm
+  assert.equal(formatDateTime(evening), "Monday, November 2, 2026 at 10:30 PM");
+  assert.equal(pdfFileName(evening), "November 2 2026 10-30 PM.pdf");
 });

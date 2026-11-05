@@ -1,7 +1,7 @@
 import "server-only";
 import { withDb } from "./db";
 import { restaurantTimeZone } from "./history";
-import { addDays, localToday, mondayOf } from "./payroll";
+import { addDays, businessDate, mondayOf } from "./payroll";
 
 export type WeekPoint = {
   weekStart: string;
@@ -19,7 +19,7 @@ export type WeekdayPoint = {
 /** Weekly totals, tips by weekday, and cash/card mix for the last `weeks` full-or-current weeks. */
 export async function loadTrends(weeks = 12) {
   const timeZone = await restaurantTimeZone();
-  const today = localToday(timeZone);
+  const today = businessDate(timeZone);
   const from = addDays(mondayOf(today), -7 * (weeks - 1));
 
   // One connection runs one query at a time, so these go in sequence.

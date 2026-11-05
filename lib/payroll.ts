@@ -18,8 +18,37 @@ export const weekdayIndex = (d: string) => (parse(d).getUTCDay() + 6) % 7;
 export const isIsoDate = (v: unknown): v is string =>
   typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && format(parse(v)) === v;
 
-/** Today's date where the restaurant is. */
-export const localToday = (timeZone: string, now = new Date()) => now.toLocaleDateString("en-CA", { timeZone });
+/**
+ * The Ace's day turns over at 4am, not midnight: a close that runs past midnight still belongs
+ * to the night it started, so a cash-out saved at 12:45am Tuesday is Monday's shift.
+ */
+export const NEW_DAY_HOUR = 4;
+
+/** Calendar date and hour (0–23) of a moment, in `timeZone` (the device's own zone if omitted). */
+function wallClock(now: Date, timeZone?: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, hour: Number(get("hour")) % 24 };
+}
+
+/** True between midnight and 4am, when the clock says tomorrow but it's still tonight's shift. */
+export const isPastMidnight = (timeZone?: string, now = new Date()) => wallClock(now, timeZone).hour < NEW_DAY_HOUR;
+
+/**
+ * The business day for a moment: the date shifts and "today" are counted on. Before 4am it's
+ * the previous date. Used for saving shifts, pay weeks, missing nights, ranges and trends.
+ */
+export function businessDate(timeZone?: string, now = new Date()) {
+  const { date, hour } = wallClock(now, timeZone);
+  return hour < NEW_DAY_HOUR ? addDays(date, -1) : date;
+}
 
 export const mondayOf = (d: string) => addDays(d, -weekdayIndex(d));
 

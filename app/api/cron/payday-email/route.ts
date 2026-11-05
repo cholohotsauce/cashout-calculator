@@ -3,7 +3,7 @@ import { isDatabaseConfigured, withDb } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { loadHistory, restaurantTimeZone } from "@/lib/history";
 import { buildPaydayEmail, isEmailConfigured, payrollRecipients, sendEmail } from "@/lib/email";
-import { localToday, periodForPayday, upcomingPayday } from "@/lib/payroll";
+import { businessDate, periodForPayday, upcomingPayday } from "@/lib/payroll";
 
 /**
  * Runs every Thursday (see vercel.json): emails the owner who to pay on Friday.
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return Response.json({ sent: false, reason: "Database or email isn't configured." });
   }
 
-  const payday = upcomingPayday(localToday(await restaurantTimeZone()));
+  const payday = upcomingPayday(businessDate(await restaurantTimeZone()));
   // Claim this payday first, so a retried or doubled run can't send it twice.
   const claimed = await withDb((db) =>
     db.query("insert into email_log (kind, key) values ('payday', $1) on conflict do nothing", [payday]),
