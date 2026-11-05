@@ -18,18 +18,12 @@ import { saveCashOutAction, type SaveInput } from "./actions";
 import { dropSave, isOffline, loadDraft, pendingSaves, queueSave, saveDraft } from "./offline";
 import { CountUp, SuitBurst, useShake } from "./components/Motion";
 import { cashOutQuip } from "@/lib/quips";
+import { businessDate } from "@/lib/payroll";
 
 type SaveState = { status: "idle" | "saving" | "error" } | { status: "saved" | "queued"; key: string };
 
-/**
- * The shift's calendar date. A close that runs past midnight still belongs to the night
- * before, so anything before 5am counts as the previous day.
- */
-function shiftDate(now = new Date()) {
-  const d = new Date(now);
-  if (d.getHours() < 5) d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+/** The shift's date on this device: before 4am it's still the previous night (see businessDate). */
+const shiftDate = (now = new Date()) => businessDate(undefined, now);
 
 // Loaded after the first calculation so Save PDF can run straight from the tap
 // (iPad Safari can block downloads that start after an await).

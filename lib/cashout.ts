@@ -1,3 +1,5 @@
+import { businessDate, formatDay, isPastMidnight } from "./payroll.ts";
+
 /** Default kitchen share; the live value is a setting managers can change. */
 export const BOH_SHARE = 0.3;
 
@@ -36,14 +38,20 @@ export function sanitizeDecimal(value: string) {
 }
 
 export function formatDateTime(date = new Date()) {
-  return date.toLocaleString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (!isPastMidnight(undefined, date)) {
+    return date.toLocaleString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  // After midnight the report is still for the night before, so lead with that date.
+  const night = formatDay(businessDate(undefined, date), { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const time = date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  return `${night} shift · cashed out ${time} ${date.toLocaleDateString("en-US", { weekday: "long" })}`;
 }
 
 export const toCents = (dollars: number) => Math.round(dollars * 100);
@@ -121,9 +129,11 @@ export function formatHours(hours: number) {
 }
 
 export function pdfFileName(date = new Date()) {
-  const month = date.toLocaleString("en-US", { month: "long" });
+  // Named for the shift's night, so a 12:45am close files under the day the shift was.
+  const [year, month, day] = businessDate(undefined, date).split("-").map(Number);
+  const monthName = new Date(Date.UTC(year, month - 1, 15)).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
   const hours12 = date.getHours() % 12 || 12;
   const minutes = String(date.getMinutes()).padStart(2, "0");
   const ampm = date.getHours() >= 12 ? "PM" : "AM";
-  return `${month} ${date.getDate()} ${date.getFullYear()} ${hours12}-${minutes} ${ampm}.pdf`;
+  return `${monthName} ${day} ${year} ${hours12}-${minutes} ${ampm}.pdf`;
 }
