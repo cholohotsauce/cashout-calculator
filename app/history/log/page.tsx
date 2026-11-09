@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { formatMoney } from "@/lib/cashout";
+import { SERVICES, formatMoney, isService } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
 import { isManager } from "@/lib/auth";
 import { recentAudit, type AuditEntry } from "@/lib/audit";
@@ -14,6 +14,8 @@ export const metadata: Metadata = { title: "Change log · The Ace" };
 const money = (c: unknown) => formatMoney(Number(c) / 100);
 const day = (d: unknown) => formatDay(String(d));
 
+const service = (d: Record<string, unknown>) => (isService(d.service) ? ` ${SERVICES[d.service].toLowerCase()}` : "");
+
 type Tone = "neutral" | "good" | "warn" | "bad";
 
 /** Turns a log entry into one plain sentence. */
@@ -21,11 +23,14 @@ function describe(e: AuditEntry): { text: string; tone: Tone } {
   const d = e.detail;
   switch (e.action) {
     case "shift.saved":
-      return { text: `Cash-out saved for ${day(d.shiftDate)}: ${money(d.totalCents)} to ${(d.staff as unknown[])?.length ?? 0} people`, tone: "good" };
+      if (e.actor === "manager") {
+        return { text: `Missed cash-out added for ${day(d.shiftDate)}${service(d)}: ${money(d.totalCents)} to ${(d.staff as unknown[])?.length ?? 0} people`, tone: "warn" };
+      }
+      return { text: `Cash-out saved for ${day(d.shiftDate)}${service(d)}: ${money(d.totalCents)} to ${(d.staff as unknown[])?.length ?? 0} people`, tone: "good" };
     case "shift.updated": {
       const moved = d.previousShiftDate && d.previousShiftDate !== d.shiftDate ? ` (moved from ${day(d.previousShiftDate)})` : "";
       const changed = d.previousTotalCents !== d.totalCents ? `, total ${money(d.previousTotalCents)} → ${money(d.totalCents)}` : ", same total";
-      return { text: `Cash-out for ${day(d.shiftDate)} corrected${moved}${changed}`, tone: "warn" };
+      return { text: `Cash-out for ${day(d.shiftDate)}${service(d)} corrected${moved}${changed}`, tone: "warn" };
     }
     case "shift.deleted":
       return { text: `Cash-out for ${day(d.shiftDate)} deleted (${money(d.totalCents)}; ${(d.staff as string[])?.join(", ")})`, tone: "bad" };

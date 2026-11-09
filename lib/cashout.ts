@@ -137,3 +137,8 @@ export function pdfFileName(date = new Date()) {
   const ampm = date.getHours() >= 12 ? "PM" : "AM";
   return `${monthName} ${day} ${year} ${hours12}-${minutes} ${ampm}.pdf`;
 }
+
+/** The services a day can have. A cash-out may say which one it covers; older ones don't. */
+export const SERVICES = { brunch: "Brunch", night: "Night" } as const;
+export type Service = keyof typeof SERVICES;
+export const isService = (v: unknown): v is Service => typeof v === "string" && Object.hasOwn(SERVICES, v);

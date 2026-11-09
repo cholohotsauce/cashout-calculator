@@ -1,13 +1,15 @@
 import "server-only";
-import type { CashOut } from "./cashout";
+import type { CashOut, Service } from "./cashout";
 import { transaction, withDb } from "./db";
-import { audit } from "./audit";
+import { audit, type Actor } from "./audit";
 import { addDays, currentPayPeriod, isIsoDate, businessDate, missingNights, mondayOf, payPeriod, type PayPeriod } from "./payroll";
 
 export type SavedShift = {
   id: string;
   createdAt: Date;
+  updatedAt: Date;
   shiftDate: string; // YYYY-MM-DD
+  service: Service | null;
   timeZone: string;
   cashCents: number;
   cardCents: number;
@@ -48,8 +50,15 @@ async function assertUnpaid(db: Db, dates: string[]) {
   if (rowCount) throw new PaidWeekError();
 }
 
+export type SaveOptions = {
+  /** Who is saving: the calculator at close, or a manager fixing or adding a shift. */
+  actor?: Actor;
+  /** Brunch or night. Left out, a re-save keeps whatever the shift already had. */
+  service?: Service | null;
+};
+
 /** Saves a cash-out, or replaces it when the same shift is saved again after a correction. */
-export async function saveShift(id: string, r: CashOut, shiftDate: string, timeZone: string) {
+export async function saveShift(id: string, r: CashOut, shiftDate: string, timeZone: string, { actor = "calculator", service }: SaveOptions = {}) {
   const cents = (d: number) => Math.round(d * 100);
   await transaction(async (db) => {
     const existing = await db.query<{ d: string; total_cents: number }>(
@@ -58,14 +67,18 @@ export async function saveShift(id: string, r: CashOut, shiftDate: string, timeZ
     );
     await assertUnpaid(db, [shiftDate, ...existing.rows.map((row) => row.d)]);
     await db.query(
-      `insert into cashouts (id, shift_date, time_zone, cash_cents, card_cents, total_cents, boh_cents, foh_cents, boh_share, total_hours)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `insert into cashouts (id, shift_date, time_zone, cash_cents, card_cents, total_cents, boh_cents, foh_cents, boh_share, total_hours, service)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        on conflict (id) do update set
          updated_at = now(), shift_date = excluded.shift_date, time_zone = excluded.time_zone,
          cash_cents = excluded.cash_cents, card_cents = excluded.card_cents, total_cents = excluded.total_cents,
          boh_cents = excluded.boh_cents, foh_cents = excluded.foh_cents, boh_share = excluded.boh_share,
-         total_hours = excluded.total_hours`,
-      [id, shiftDate, timeZone, cents(r.cash), cents(r.card), cents(r.totalTips), cents(r.bohTips), cents(r.fohTips), r.bohShare, r.totalHours],
+         total_hours = excluded.total_hours,
+         service = case when $12 then excluded.service else cashouts.service end`,
+      [
+        id, shiftDate, timeZone, cents(r.cash), cents(r.card), cents(r.totalTips), cents(r.bohTips), cents(r.fohTips), r.bohShare, r.totalHours,
+        service ?? null, service !== undefined,
+      ],
     );
     await db.query("delete from cashout_staff where cashout_id = $1", [id]);
     await db.query(
@@ -82,11 +95,12 @@ export async function saveShift(id: string, r: CashOut, shiftDate: string, timeZ
     );
     const before = existing.rows[0];
     await audit(
-      "calculator",
+      actor,
       before ? "shift.updated" : "shift.saved",
       {
         id,
         shiftDate,
+        ...(service && { service }),
         totalCents: cents(r.totalTips),
         ...(before && { previousTotalCents: before.total_cents, previousShiftDate: before.d }),
         staff: r.staffTips.map((s) => ({ name: s.name, hours: s.hours, amountCents: cents(s.amount) })),
@@ -168,6 +182,48 @@ export type PeriodStatus = PayPeriod & {
   isCurrent: boolean;
 };
 
+const SHIFT_SELECT = /* sql */ `
+  select c.id, c.created_at, c.updated_at, to_char(c.shift_date, 'YYYY-MM-DD') as shift_date, c.service, c.time_zone,
+         c.cash_cents, c.card_cents, c.total_cents, c.boh_cents, c.foh_cents,
+         c.boh_share::float8 as boh_share, c.total_hours::float8 as total_hours,
+         coalesce(json_agg(json_build_object('name', s.name, 'hours', s.hours::float8, 'amountCents', s.amount_cents)
+                    order by s.position) filter (where s.cashout_id is not null), '[]') as staff
+  from cashouts c
+  left join cashout_staff s on s.cashout_id = c.id`;
+
+/** Within a day, night comes after brunch; untagged shifts fall back to when they were saved. */
+const SERVICE_ORDER = "case c.service when 'night' then 2 when 'brunch' then 1 else 0 end";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toShift = (r: any): SavedShift => ({
+  id: r.id,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+  shiftDate: r.shift_date,
+  service: r.service ?? null,
+  timeZone: r.time_zone,
+  cashCents: r.cash_cents,
+  cardCents: r.card_cents,
+  totalCents: r.total_cents,
+  bohCents: r.boh_cents,
+  fohCents: r.foh_cents,
+  bohShare: r.boh_share,
+  totalHours: r.total_hours,
+  staff: r.staff,
+});
+
+/** One saved shift, for the edit screen. */
+export async function getShift(id: string): Promise<SavedShift | null> {
+  const { rows } = await withDb((db) => db.query(`${SHIFT_SELECT} where c.id = $1 group by c.id`, [id]));
+  return rows[0] ? toShift(rows[0]) : null;
+}
+
+/** Mondays of every pay week marked paid (their shifts are locked). */
+export async function paidWeekStarts() {
+  const { rows } = await withDb((db) => db.query<{ w: string }>("select to_char(week_start, 'YYYY-MM-DD') as w from pay_periods order by week_start"));
+  return rows.map((r) => r.w);
+}
+
 /**
  * Loads saved shifts for a range. The "payday" range is one pay week: the one paid this
  * coming Friday, or the week starting on `week` when given.
@@ -188,35 +244,16 @@ export async function loadHistory(range: RangeKey, week?: string) {
 
   const { rows } = await withDb((db) =>
     db.query(
-      `select c.id, c.created_at, to_char(c.shift_date, 'YYYY-MM-DD') as shift_date, c.time_zone,
-              c.cash_cents, c.card_cents, c.total_cents, c.boh_cents, c.foh_cents,
-              c.boh_share::float8 as boh_share, c.total_hours::float8 as total_hours,
-              coalesce(json_agg(json_build_object('name', s.name, 'hours', s.hours::float8, 'amountCents', s.amount_cents)
-                         order by s.position) filter (where s.cashout_id is not null), '[]') as staff
-       from cashouts c
-       left join cashout_staff s on s.cashout_id = c.id
+      `${SHIFT_SELECT}
        where ($1::date is null or c.shift_date >= $1) and ($2::date is null or c.shift_date <= $2)
        group by c.id
-       order by c.shift_date desc, c.created_at desc
+       order by c.shift_date desc, ${SERVICE_ORDER} desc, c.created_at desc
        limit 1000`,
       [from, to],
     ),
   );
 
-  const shifts: SavedShift[] = rows.map((r) => ({
-    id: r.id,
-    createdAt: r.created_at,
-    shiftDate: r.shift_date,
-    timeZone: r.time_zone,
-    cashCents: r.cash_cents,
-    cardCents: r.card_cents,
-    totalCents: r.total_cents,
-    bohCents: r.boh_cents,
-    fohCents: r.foh_cents,
-    bohShare: r.boh_share,
-    totalHours: r.total_hours,
-    staff: r.staff,
-  }));
+  const shifts = rows.map(toShift);
 
   // People are matched by name, ignoring case and stray spaces.
   const byName = new Map<string, StaffTotal>();

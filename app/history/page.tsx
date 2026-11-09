@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { formatHours, formatMoney } from "@/lib/cashout";
+import { SERVICES, formatHours, formatMoney } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
 import { isManager, isPinConfigured } from "@/lib/auth";
 import { RANGES, isRangeKey, loadHistory, type PeriodStatus, type RangeKey, type SavedShift } from "@/lib/history";
-import { addDays, formatDay, formatRange, mondayOf } from "@/lib/payroll";
+import { addDays, businessDate, formatDay, formatRange, mondayOf } from "@/lib/payroll";
 import { markPaidAction, unmarkPaidAction, sendStubsAction } from "../actions";
 import { Panel, Shell } from "./ui";
 import { ConfirmAction } from "./ConfirmAction";
@@ -36,7 +37,22 @@ function SetupNotice({ missing }: { missing: string[] }) {
 }
 
 function shiftTime(s: SavedShift) {
+  // Shifts added days later by a manager say so, rather than showing a misleading save time.
+  if (businessDate(s.timeZone, s.createdAt) > s.shiftDate) {
+    return `added ${s.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: s.timeZone })}`;
+  }
   return s.createdAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: s.timeZone });
+}
+
+/** True when a shift was changed after it was first saved. */
+const wasEdited = (s: SavedShift) => s.updatedAt.getTime() - s.createdAt.getTime() > 60_000;
+
+function AddShiftLink({ date, children, className }: { date?: string; children: ReactNode; className: string }) {
+  return (
+    <Link href={`/history/shift${date ? `?date=${date}` : ""}`} className={className}>
+      {children}
+    </Link>
+  );
 }
 
 function shiftDay(date: string) {
@@ -82,9 +98,24 @@ function PaydayCard({ period }: { period: PeriodStatus }) {
           <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
             <path fillRule="evenodd" d="M8.3 3.1a2 2 0 013.4 0l6.1 10.6A2 2 0 0116.1 17H3.9a2 2 0 01-1.7-3.3L8.3 3.1zM10 7a1 1 0 00-1 1v3a1 1 0 102 0V8a1 1 0 00-1-1zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
           </svg>
-          <p>
-            No cash-out saved for <strong>{period.missing.map((d) => formatDay(d)).join(", ")}</strong>. If you were open, those tips aren&apos;t counted yet.
-          </p>
+          <div>
+            <p>
+              No cash-out saved for <strong>{period.missing.map((d) => formatDay(d)).join(", ")}</strong>. If you were open, those tips aren&apos;t counted yet.
+            </p>
+            {!period.paid && (
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {period.missing.map((d) => (
+                  <AddShiftLink
+                    key={d}
+                    date={d}
+                    className="rounded-full border border-amber-200/30 bg-amber-200/10 px-3 py-1 text-xs font-semibold text-amber-50 transition-colors hover:bg-amber-200/20"
+                  >
+                    + Add {formatDay(d, { weekday: "short", month: "short", day: "numeric" })}
+                  </AddShiftLink>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -204,6 +235,9 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
           <div className="py-6 text-center">
             <p className="text-white/60">No cash-outs saved in this range yet.</p>
             <p className="mt-1 text-sm text-white/40">Either it was a quiet week, or nobody pressed the glowing Save button.</p>
+            <AddShiftLink className="mt-4 inline-block rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-white">
+              + Add a missed shift
+            </AddShiftLink>
           </div>
         </Panel>
       ) : (
@@ -235,16 +269,27 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
             </div>
           </Panel>
 
-          <Panel title="Shifts" aside={`${shifts.length} saved`}>
+          <Panel
+            title="Shifts"
+            aside={
+              <AddShiftLink className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20">
+                + Add a missed shift
+              </AddShiftLink>
+            }
+          >
             <ul className="space-y-2">
               {shifts.map((s) => (
                 <li key={s.id}>
                   <details className="group rounded-2xl border border-white/5 bg-white/[0.04] open:bg-white/[0.06]">
                     <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-white/90">{shiftDay(s.shiftDate)}</p>
+                        <p className="font-medium text-white/90">
+                          {shiftDay(s.shiftDate)}
+                          {s.service && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-white/70">{SERVICES[s.service]}</span>}
+                        </p>
                         <p className="text-xs text-white/45">
                           {shiftTime(s)} · {s.staff.length} FOH · {formatHours(s.totalHours)}
+                          {wasEdited(s) && " · edited"}
                         </p>
                       </div>
                       <span className="font-semibold text-white tabular-nums">{cents(s.totalCents)}</span>
@@ -267,11 +312,19 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
                           </li>
                         ))}
                       </ul>
-                      <div className="mt-3 flex justify-end">
+                      <div className="mt-3 flex justify-end gap-1">
                         {paidWeeks.includes(mondayOf(s.shiftDate)) ? (
                           <span className="px-3 py-1.5 text-sm text-white/35">Paid week · locked</span>
                         ) : (
-                          <DeleteShiftButton id={s.id} />
+                          <>
+                            <Link
+                              href={`/history/shift?id=${s.id}`}
+                              className="rounded-full px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                            >
+                              Edit
+                            </Link>
+                            <DeleteShiftButton id={s.id} />
+                          </>
                         )}
                       </div>
                     </div>

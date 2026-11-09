@@ -16,6 +16,9 @@ create table if not exists cashouts (
   total_hours  numeric(7, 2) not null
 );
 
+-- Which service a cash-out covers when a day has more than one (brunch, night). Optional.
+alter table cashouts add column if not exists service text check (service in ('brunch', 'night'));
+
 create index if not exists cashouts_shift_date_idx on cashouts (shift_date desc, created_at desc);
 
 create table if not exists cashout_staff (
