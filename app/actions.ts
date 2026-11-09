@@ -4,10 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sendPayStubs } from "@/lib/stubs";
-import { calculateCashOut } from "@/lib/cashout";
+import { calculateCashOut, isService, type Service } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
-import { PaidWeekError, deleteShift, markWeekPaid, saveShift, unmarkWeekPaid } from "@/lib/history";
-import { isIsoDate } from "@/lib/payroll";
+import { PaidWeekError, deleteShift, getShift, markWeekPaid, restaurantTimeZone, saveShift, unmarkWeekPaid } from "@/lib/history";
+import { businessDate, isIsoDate, mondayOf } from "@/lib/payroll";
 import { isManager, signIn, signOut } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { MAX_BOH, MIN_BOH, getBohShare } from "@/lib/staff";
@@ -39,6 +39,16 @@ function validZone(tz: unknown) {
   }
 }
 
+type StaffInput = { name: string; hours: number }[];
+
+const isValidStaff = (staff: unknown): staff is StaffInput =>
+  Array.isArray(staff) &&
+  staff.length > 0 &&
+  staff.length <= 40 &&
+  staff.every((s) => typeof s?.name === "string" && s.name.trim().length > 0 && s.name.length <= 40 && isHours(s.hours));
+
+const cleanStaff = (staff: StaffInput) => staff.map((s) => ({ name: s.name.trim().replace(/\s+/g, " "), hours: Math.round(s.hours * 100) / 100 }));
+
 /**
  * Stores a cash-out in the shift history. Anyone on the calculator can save (that's the
  * iPad at close); only the manager can read or delete history. The server recalculates
@@ -48,15 +58,10 @@ export async function saveCashOutAction(input: SaveInput): Promise<SaveResult> {
   if (!isDatabaseConfigured()) return { ok: false, error: "Shift history isn't set up yet." };
 
   const { id, cash, card, staff, shiftDate, timeZone } = input ?? {};
-  const validStaff =
-    Array.isArray(staff) &&
-    staff.length > 0 &&
-    staff.length <= 40 &&
-    staff.every((s) => typeof s?.name === "string" && s.name.trim().length > 0 && s.name.length <= 40 && isHours(s.hours));
   if (
     typeof id !== "string" || !UUID.test(id) ||
     !isMoney(cash) || !isMoney(card) || cash + card <= 0 ||
-    !validStaff ||
+    !isValidStaff(staff) ||
     typeof shiftDate !== "string" || !DATE.test(shiftDate) || Number.isNaN(Date.parse(shiftDate)) ||
     !validZone(timeZone)
   ) {
@@ -67,7 +72,7 @@ export async function saveCashOutAction(input: SaveInput): Promise<SaveResult> {
     const result = calculateCashOut(
       cash,
       card,
-      staff.map((s) => ({ name: s.name.trim(), hours: Math.round(s.hours * 100) / 100 })),
+      cleanStaff(staff),
       new Date(),
       await getBohShare(),
     );
@@ -79,6 +84,48 @@ export async function saveCashOutAction(input: SaveInput): Promise<SaveResult> {
   }
   revalidatePath("/history");
   return { ok: true };
+}
+
+export type ManagerShiftInput = {
+  id: string;
+  shiftDate: string;
+  service: Service | null;
+  cash: number;
+  card: number;
+  staff: StaffInput;
+};
+
+export type ManagerShiftResult = { ok: true; week: string } | { ok: false; error: string };
+
+/**
+ * A manager fixing a saved shift or adding one nobody saved on the night. Edits keep the
+ * kitchen share the shift was saved with; a new shift uses today's. The pay week's totals
+ * come straight from the saved shifts, so they update with it.
+ */
+export async function saveShiftAsManagerAction(input: ManagerShiftInput): Promise<ManagerShiftResult> {
+  if (!(await isManager())) return { ok: false, error: "Your session ended. Unlock History again." };
+  const { id, shiftDate, service, cash, card, staff } = input ?? {};
+  if (typeof id !== "string" || !UUID.test(id)) return { ok: false, error: "Something went wrong. Reload and try again." };
+  if (!isIsoDate(shiftDate)) return { ok: false, error: "Pick the date of the shift." };
+  if (service !== null && !isService(service)) return { ok: false, error: "Pick brunch, night, or neither." };
+  if (!isMoney(cash) || !isMoney(card) || cash + card <= 0) return { ok: false, error: "Enter the cash and card tips." };
+  if (!isValidStaff(staff)) return { ok: false, error: "Add at least one person with their hours (up to 24 each)." };
+
+  try {
+    const [existing, zone] = await Promise.all([getShift(id), restaurantTimeZone()]);
+    if (shiftDate > businessDate(zone)) return { ok: false, error: "That date hasn't happened yet." };
+    const bohShare = existing?.bohShare ?? (await getBohShare());
+    const result = calculateCashOut(cash, card, cleanStaff(staff), new Date(), bohShare);
+    await saveShift(id, result, shiftDate, existing?.timeZone ?? zone, { actor: "manager", service });
+  } catch (err) {
+    if (err instanceof PaidWeekError) {
+      return { ok: false, error: "That week is already marked paid. Unlock it on the Payday tab first, then save." };
+    }
+    console.error("saveShiftAsManager failed", err);
+    return { ok: false, error: "Couldn't reach the database. Try again in a moment." };
+  }
+  revalidatePath("/history", "layout");
+  return { ok: true, week: mondayOf(shiftDate) };
 }
 
 export type LoginState = { error?: string };
