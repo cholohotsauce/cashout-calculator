@@ -6,7 +6,7 @@ import { isDatabaseConfigured } from "@/lib/db";
 import { isManager } from "@/lib/auth";
 import { recentAudit, type AuditEntry } from "@/lib/audit";
 import { restaurantTimeZone } from "@/lib/history";
-import { formatDay, formatRange, payPeriod } from "@/lib/payroll";
+import { businessDate, formatDay, formatRange, payPeriod } from "@/lib/payroll";
 import { Panel, Shell } from "../ui";
 
 export const metadata: Metadata = { title: "Change log · The Ace" };
@@ -70,10 +70,10 @@ export default async function LogPage() {
   if (!isDatabaseConfigured() || !(await isManager())) redirect("/history");
   const [entries, timeZone] = await Promise.all([recentAudit(300), restaurantTimeZone()]);
 
-  // Group by local calendar day, newest first.
+  // Group by business day, newest first, so a 1am save sits with the night it belongs to.
   const groups = new Map<string, AuditEntry[]>();
   for (const e of entries) {
-    const key = e.at.toLocaleDateString("en-CA", { timeZone });
+    const key = businessDate(timeZone, e.at);
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }
 

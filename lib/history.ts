@@ -2,7 +2,7 @@ import "server-only";
 import type { CashOut } from "./cashout";
 import { transaction, withDb } from "./db";
 import { audit } from "./audit";
-import { addDays, currentPayPeriod, isIsoDate, localToday, missingNights, mondayOf, payPeriod, type PayPeriod } from "./payroll";
+import { addDays, currentPayPeriod, isIsoDate, businessDate, missingNights, mondayOf, payPeriod, type PayPeriod } from "./payroll";
 
 export type SavedShift = {
   id: string;
@@ -142,7 +142,7 @@ export async function restaurantTimeZone() {
 
 /** Inclusive date bounds for a range, in the restaurant's local calendar. Weeks start on Monday. */
 export function rangeBounds(range: RangeKey, timeZone: string, now = new Date()): { from: string | null; to: string | null } {
-  const today = localToday(timeZone, now);
+  const today = businessDate(timeZone, now);
   const monday = mondayOf(today);
   switch (range) {
     case "payday": {
@@ -174,7 +174,7 @@ export type PeriodStatus = PayPeriod & {
  */
 export async function loadHistory(range: RangeKey, week?: string) {
   const timeZone = await restaurantTimeZone();
-  const today = localToday(timeZone);
+  const today = businessDate(timeZone);
   let period: PayPeriod | null = null;
   let from: string | null;
   let to: string | null;
