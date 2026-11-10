@@ -6,8 +6,8 @@ import { after } from "next/server";
 import { sendPayStubs } from "@/lib/stubs";
 import { calculateCashOut, isService, type Service } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
-import { PaidWeekError, deleteShift, getShift, markWeekPaid, restaurantTimeZone, saveShift, unmarkWeekPaid } from "@/lib/history";
-import { businessDate, isIsoDate, mondayOf } from "@/lib/payroll";
+import { PaidWeekError, deleteShift, getShift, undoRecentSave, markWeekPaid, restaurantTimeZone, saveShift, unmarkWeekPaid } from "@/lib/history";
+import { addDays, businessDate, isIsoDate, mondayOf } from "@/lib/payroll";
 import { isManager, signIn, signOut } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { MAX_BOH, MIN_BOH, getBohShare } from "@/lib/staff";
@@ -20,6 +20,8 @@ export type SaveInput = {
   staff: { name: string; hours: number }[];
   shiftDate: string;
   timeZone: string;
+  /** Brunch or night, picked on the save pop-up. Left out, a re-save keeps what the shift had. */
+  service?: Service | null;
 };
 
 export type SaveResult = { ok: true } | { ok: false; error: string };
@@ -57,15 +59,22 @@ const cleanStaff = (staff: StaffInput) => staff.map((s) => ({ name: s.name.trim(
 export async function saveCashOutAction(input: SaveInput): Promise<SaveResult> {
   if (!isDatabaseConfigured()) return { ok: false, error: "Shift history isn't set up yet." };
 
-  const { id, cash, card, staff, shiftDate, timeZone } = input ?? {};
+  const { id, cash, card, staff, shiftDate, timeZone, service } = input ?? {};
   if (
     typeof id !== "string" || !UUID.test(id) ||
     !isMoney(cash) || !isMoney(card) || cash + card <= 0 ||
     !isValidStaff(staff) ||
     typeof shiftDate !== "string" || !DATE.test(shiftDate) || Number.isNaN(Date.parse(shiftDate)) ||
-    !validZone(timeZone)
+    !validZone(timeZone) ||
+    (service !== undefined && service !== null && !isService(service))
   ) {
     return { ok: false, error: "That cash-out looks incomplete. Check the tips and hours." };
+  }
+
+  // The pop-up offers tonight and the two nights before; anything older goes through a manager.
+  const today = businessDate(timeZone);
+  if (shiftDate > addDays(today, 1) || shiftDate < addDays(today, -6)) {
+    return { ok: false, error: "That date is too far back for the calculator. Ask a manager to add it in History." };
   }
 
   try {
@@ -76,10 +85,25 @@ export async function saveCashOutAction(input: SaveInput): Promise<SaveResult> {
       new Date(),
       await getBohShare(),
     );
-    await saveShift(id, result, shiftDate, timeZone);
+    await saveShift(id, result, shiftDate, timeZone, service === undefined ? {} : { service });
   } catch (err) {
     if (err instanceof PaidWeekError) return { ok: false, error: "That week has already been paid, so it can't change. Ask the manager." };
     console.error("saveCashOut failed", err);
+    return { ok: false, error: "Couldn't reach the database. Try again in a moment." };
+  }
+  revalidatePath("/history");
+  return { ok: true };
+}
+
+/** The Undo right after a save: removes that cash-out if it was saved in the last few minutes. */
+export async function undoCashOutSaveAction(id: string): Promise<SaveResult> {
+  if (!isDatabaseConfigured()) return { ok: false, error: "Shift history isn't set up yet." };
+  if (typeof id !== "string" || !UUID.test(id)) return { ok: false, error: "Couldn't undo that save." };
+  try {
+    if (!(await undoRecentSave(id))) return { ok: false, error: "Too late to undo here. Ask a manager to delete it in History." };
+  } catch (err) {
+    if (err instanceof PaidWeekError) return { ok: false, error: "That week has already been paid, so it can't change. Ask the manager." };
+    console.error("undoCashOutSave failed", err);
     return { ok: false, error: "Couldn't reach the database. Try again in a moment." };
   }
   revalidatePath("/history");

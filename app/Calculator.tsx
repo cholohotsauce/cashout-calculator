@@ -14,11 +14,13 @@ import {
 } from "@/lib/cashout";
 import { Toast, useToast } from "./components/Toast";
 import { Backdrop } from "./components/Backdrop";
-import { saveCashOutAction, type SaveInput } from "./actions";
+import { saveCashOutAction, undoCashOutSaveAction, type SaveInput } from "./actions";
 import { dropSave, isOffline, loadDraft, pendingSaves, queueSave, saveDraft } from "./offline";
 import { CountUp, SuitBurst, useShake } from "./components/Motion";
 import { cashOutQuip } from "@/lib/quips";
-import { businessDate } from "@/lib/payroll";
+import { NEW_DAY_HOUR, businessDate } from "@/lib/payroll";
+import { type Service } from "@/lib/cashout";
+import { SaveSheet, type SaveWhen } from "./components/SaveSheet";
 
 type SaveState = { status: "idle" | "saving" | "error" } | { status: "saved" | "queued"; key: string };
 
@@ -61,25 +63,25 @@ function keepFieldVisible(e: React.FocusEvent<HTMLElement>) {
 
 const perHour = (n: number) => `${formatMoney(n)}/hr`;
 
-// "Save to shift history" is new, so it glows until a device has used it once, or until this
-// date, whichever comes first. After that the button is just a button again.
-const SAVE_NUDGE_UNTIL = new Date("2026-12-02T12:00:00Z");
-const SAVE_NUDGE_KEY = "ace:save-nudge-done";
+// The save pop-up adds one line of why-it-matters until a device has saved once.
+const SHEET_SEEN_KEY = "ace:save-sheet-seen";
 
-function readNudge() {
-  if (Date.now() > SAVE_NUDGE_UNTIL.getTime()) return false;
+function readFirstTime() {
   try {
-    return localStorage.getItem(SAVE_NUDGE_KEY) !== "1";
+    return localStorage.getItem(SHEET_SEEN_KEY) !== "1";
   } catch {
-    return true;
+    return false;
   }
 }
 
-function retireNudge() {
+function markSheetSeen() {
   try {
-    localStorage.setItem(SAVE_NUDGE_KEY, "1");
+    localStorage.setItem(SHEET_SEEN_KEY, "1");
   } catch {}
 }
+
+/** Brunch until 4pm, night after (and through the small hours, which count as the night before). */
+const defaultService = (now = new Date()): Service => (now.getHours() >= NEW_DAY_HOUR && now.getHours() < 16 ? "brunch" : "night");
 
 const fieldClass =
   "w-full h-14 rounded-2xl border bg-black/25 px-4 text-lg font-medium tracking-tight text-white shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] placeholder:text-white/25 transition-colors focus:bg-black/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper/60";
@@ -141,7 +143,9 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
   const [logoClicks, setLogoClicks] = useState(0);
   const [logoSpin, setLogoSpin] = useState(0);
   const [calcCount, setCalcCount] = useState(0);
-  const [nudgeSave, setNudgeSave] = useState(false);
+  const [firstTime, setFirstTime] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [when, setWhen] = useState<SaveWhen>(() => ({ date: shiftDate(), service: defaultService() }));
   const [tipsRef, shakeTips] = useShake<HTMLDivElement>();
   const [staffRef, shakeStaff] = useShake<HTMLDivElement>();
   const [hoursRef, shakeHours] = useShake<HTMLDivElement>();
@@ -174,7 +178,7 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
       setShiftId(d.shiftId);
     } else if (d) saveDraft(null);
     restored.current = true;
-    setNudgeSave(readNudge());
+    setFirstTime(readFirstTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -283,6 +287,9 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
     setResults({ ...calculateCashOut(live.cash, live.card, live.staff, new Date(), bohShare), key: live.key });
     setCalcCount((n) => n + 1);
     requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    // Ask right away whether this is the real cash-out, so saving is part of finishing up.
+    const alreadySaved = (save.status === "saved" || save.status === "queued") && save.key === live.key;
+    if (historyEnabled && !alreadySaved) openSheet();
   };
 
   const reset = () => {
@@ -341,8 +348,28 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank", "noopener");
   };
 
+  // Undo straight after a save takes it back out of history (or off this iPad if it never left).
+  const undoSave = async (id: string) => {
+    dismiss();
+    const wasPending = id in pendingSaves();
+    dropSave(id);
+    setQueued(Object.keys(pendingSaves()).length);
+    if (!wasPending) {
+      try {
+        const res = await undoCashOutSaveAction(id);
+        if (!res.ok) return show(res.error, "error");
+      } catch {
+        return show("No signal, so it couldn't be undone. Ask a manager to delete it in History.", "error");
+      }
+    }
+    setShiftId(null);
+    setSave({ status: "idle" });
+    show("Undone. Nothing saved.", "info");
+  };
+
   const saveToHistory = async () => {
     if (!results || save.status === "saving") return;
+    const updating = shiftId !== null;
     const id = shiftId ?? crypto.randomUUID();
     setShiftId(id);
     setSave({ status: "saving" });
@@ -352,16 +379,21 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
       cash: live.cash,
       card: live.card,
       staff: live.staff.map(({ name, hours }) => ({ name, hours })),
-      shiftDate: shiftDate(),
+      shiftDate: when.date,
+      service: when.service,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+    const undo = updating ? undefined : { label: "Undo", onClick: () => undoSave(id) };
+    const saved = () => {
+      setFirstTime(false);
+      markSheetSeen();
     };
     const keepOnDevice = () => {
       queueSave(input);
       setQueued(Object.keys(pendingSaves()).length);
       setSave({ status: "queued", key });
-      setNudgeSave(false);
-      retireNudge();
-      show("No signal. Saved on this iPad, it will upload when back online.", "success");
+      saved();
+      show("No signal. Locked in on this iPad, it uploads when back online.", "success", undo);
     };
     if (isOffline()) return keepOnDevice();
     try {
@@ -369,9 +401,8 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
       if (res.ok) {
         dropSave(id);
         setSave({ status: "saved", key });
-        setNudgeSave(false);
-        retireNudge();
-        show(shiftId ? "Saved shift updated" : "Saved to shift history. Payday will thank you.", "success");
+        saved();
+        show(updating ? "Saved shift updated" : "Locked in. Payday will thank you.", "success", undo);
       } else {
         setSave({ status: "error" });
         show(res.error, "error");
@@ -380,6 +411,12 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
       // The request never reached the server: keep it and retry in the background.
       keepOnDevice();
     }
+  };
+
+  /** Opens the save pop-up, starting from tonight unless this shift already has a date picked. */
+  const openSheet = () => {
+    if (shiftId === null) setWhen({ date: shiftDate(), service: defaultService() });
+    setSheetOpen(true);
   };
 
   const isSaved = (save.status === "saved" || save.status === "queued") && results !== null && save.key === results.key;
@@ -710,6 +747,29 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
 
       <Toast toast={toast} />
 
+      {historyEnabled && results && (
+        <SaveSheet
+          open={sheetOpen}
+          total={results.totalTips}
+          cash={results.cash}
+          card={results.card}
+          staff={results.staffTips.map((s) => s.name)}
+          today={shiftDate()}
+          when={when}
+          onWhen={setWhen}
+          updating={shiftId !== null}
+          firstTime={firstTime}
+          onSave={() => {
+            setSheetOpen(false);
+            saveToHistory();
+          }}
+          onTest={() => {
+            setSheetOpen(false);
+            show("Just a test. Nothing saved.", "info");
+          }}
+        />
+      )}
+
       <div className="fixed bottom-0 left-0 z-50 w-full border-t border-white/10 bg-black/50 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-2xl">
           <AnimatePresence mode="wait" initial={false}>
@@ -725,17 +785,9 @@ export function Calculator({ historyEnabled, roster, bohShare }: { historyEnable
               >
                 {historyEnabled ? (
                   <div className="relative flex-[1.5]">
-                    {nudgeSave && !isSaved && save.status !== "saving" && (
-                      <>
-                        <span className="save-nudge-ring pointer-events-none absolute -inset-0.5 rounded-[22px]" aria-hidden />
-                        <span className="absolute -top-2.5 right-3 z-10 rounded-full bg-copper px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black shadow">
-                          New · tap me
-                        </span>
-                      </>
-                    )}
                     <button
                       type="button"
-                      onClick={saveToHistory}
+                      onClick={openSheet}
                       disabled={isSaved || save.status === "saving"}
                       className={`relative flex h-14 w-full items-center justify-center gap-2 rounded-[20px] text-base font-semibold transition-all active:scale-[0.98] disabled:cursor-default disabled:active:scale-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper ${
                         isQueued

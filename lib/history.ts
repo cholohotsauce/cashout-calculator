@@ -126,6 +126,29 @@ export async function deleteShift(id: string) {
   });
 }
 
+/**
+ * Takes back a cash-out the calculator saved moments ago (the Undo on the "Locked in" toast).
+ * Only works on a shift created in the last `minutes`, so it can't reach older history.
+ * Returns false when there was nothing recent to undo.
+ */
+export async function undoRecentSave(id: string, minutes = 15): Promise<boolean> {
+  let undone = false;
+  await transaction(async (db) => {
+    const { rows } = await db.query<{ d: string; total_cents: number; staff: string[] }>(
+      `select to_char(c.shift_date, 'YYYY-MM-DD') as d, c.total_cents,
+              array(select name from cashout_staff s where s.cashout_id = c.id order by position) as staff
+       from cashouts c where c.id = $1 and c.created_at > now() - make_interval(mins => $2) for update`,
+      [id, minutes],
+    );
+    if (!rows.length) return;
+    await assertUnpaid(db, [rows[0].d]);
+    await db.query("delete from cashouts where id = $1", [id]);
+    await audit("calculator", "shift.undone", { id, shiftDate: rows[0].d, totalCents: rows[0].total_cents, staff: rows[0].staff }, db);
+    undone = true;
+  });
+  return undone;
+}
+
 /** Locks a pay week, recording what it added up to when it was paid. */
 export async function markWeekPaid(weekStart: string): Promise<boolean> {
   const { weekStart: monday, weekEnd } = payPeriod(weekStart);
