@@ -34,6 +34,8 @@ function describe(e: AuditEntry): { text: string; tone: Tone } {
     }
     case "shift.deleted":
       return { text: `Cash-out for ${day(d.shiftDate)} deleted (${money(d.totalCents)}; ${(d.staff as string[])?.join(", ")})`, tone: "bad" };
+    case "shift.undone":
+      return { text: `Cash-out for ${day(d.shiftDate)} taken back with Undo right after saving (${money(d.totalCents)})`, tone: "neutral" };
     case "week.paid": {
       const p = payPeriod(String(d.weekStart));
       return { text: `Week ${formatRange(p.weekStart, p.weekEnd)} marked paid (${money(d.totalCents)} in tips)`, tone: "good" };

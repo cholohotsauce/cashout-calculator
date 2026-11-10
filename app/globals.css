@@ -26,23 +26,3 @@ body {
     scroll-behavior: auto !important;
   }
 }
-
-/* Temporary glow on "Save to shift history" while staff get used to it (see SAVE_NUDGE_UNTIL). */
-.save-nudge-ring {
-  box-shadow: 0 0 0 0 rgba(196, 133, 90, 0.55);
-  animation: save-nudge 2.2s ease-out infinite;
-}
-
-@keyframes save-nudge {
-  0% { box-shadow: 0 0 0 0 rgba(196, 133, 90, 0.55); }
-  70% { box-shadow: 0 0 0 12px rgba(196, 133, 90, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(196, 133, 90, 0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* Keep the hint visible as a steady outline instead of a pulse. */
-  .save-nudge-ring {
-    animation: none;
-    box-shadow: 0 0 0 2px rgba(196, 133, 90, 0.6);
-  }
-}
