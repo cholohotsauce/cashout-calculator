@@ -68,3 +68,18 @@ test("before 4am, last night isn't flagged missing yet", () => {
   const period = { from: "2026-11-02", to: "2026-11-08" };
   assert.deepEqual(missingNights(period, [], today, closedWeekdays("")), []);
 });
+
+test("quarters and the custom range default to the last full quarter", async () => {
+  const { quarterOf, recentQuarters, customRange, quarterLabel } = await import("./payroll.ts");
+  assert.deepEqual(quarterOf("2026-11-10"), { from: "2026-10-01", to: "2026-12-31" });
+  assert.deepEqual(quarterOf("2026-02-28"), { from: "2026-01-01", to: "2026-03-31" });
+  assert.deepEqual(recentQuarters("2026-11-10", 2), [
+    { from: "2026-07-01", to: "2026-09-30" },
+    { from: "2026-04-01", to: "2026-06-30" },
+  ]);
+  assert.deepEqual(recentQuarters("2026-02-01", 1), [{ from: "2025-10-01", to: "2025-12-31" }]);
+  assert.equal(quarterLabel({ from: "2026-07-01", to: "2026-09-30" }), "Jul – Sep 2026");
+  assert.deepEqual(customRange(undefined, null, "2026-11-10"), { from: "2026-07-01", to: "2026-09-30" });
+  assert.deepEqual(customRange("2026-08-01", "2026-13-01", "2026-11-10"), { from: "2026-07-01", to: "2026-09-30" });
+  assert.deepEqual(customRange("2026-10-31", "2026-08-01", "2026-11-10"), { from: "2026-08-01", to: "2026-10-31" });
+});

@@ -2,7 +2,7 @@ import "server-only";
 import type { CashOut, Service } from "./cashout";
 import { transaction, withDb } from "./db";
 import { audit, type Actor } from "./audit";
-import { addDays, currentPayPeriod, isIsoDate, businessDate, missingNights, mondayOf, payPeriod, type PayPeriod } from "./payroll";
+import { addDays, currentPayPeriod, customRange, isIsoDate, businessDate, missingNights, mondayOf, payPeriod, type PayPeriod } from "./payroll";
 
 export type SavedShift = {
   id: string;
@@ -29,6 +29,7 @@ export const RANGES = {
   "last-week": "Last week",
   month: "This month",
   all: "All time",
+  custom: "Custom",
 } as const;
 export type RangeKey = keyof typeof RANGES;
 
@@ -155,7 +156,12 @@ export async function restaurantTimeZone() {
 }
 
 /** Inclusive date bounds for a range, in the restaurant's local calendar. Weeks start on Monday. */
-export function rangeBounds(range: RangeKey, timeZone: string, now = new Date()): { from: string | null; to: string | null } {
+export function rangeBounds(
+  range: RangeKey,
+  timeZone: string,
+  now = new Date(),
+  custom: { from?: unknown; to?: unknown } = {},
+): { from: string | null; to: string | null } {
   const today = businessDate(timeZone, now);
   const monday = mondayOf(today);
   switch (range) {
@@ -173,6 +179,8 @@ export function rangeBounds(range: RangeKey, timeZone: string, now = new Date())
     }
     case "all":
       return { from: null, to: null };
+    case "custom":
+      return customRange(custom.from, custom.to, today);
   }
 }
 
@@ -226,9 +234,10 @@ export async function paidWeekStarts() {
 
 /**
  * Loads saved shifts for a range. The "payday" range is one pay week: the one paid this
- * coming Friday, or the week starting on `week` when given.
+ * coming Friday, or the week starting on `week` when given. The "custom" range runs from
+ * `custom.from` to `custom.to` (the last full quarter if they're missing).
  */
-export async function loadHistory(range: RangeKey, week?: string) {
+export async function loadHistory(range: RangeKey, week?: string, custom?: { from?: unknown; to?: unknown }) {
   const timeZone = await restaurantTimeZone();
   const today = businessDate(timeZone);
   let period: PayPeriod | null = null;
@@ -239,7 +248,7 @@ export async function loadHistory(range: RangeKey, week?: string) {
     period = isIsoDate(week) ? payPeriod(week) : current;
     ({ weekStart: from, weekEnd: to } = period);
   } else {
-    ({ from, to } = rangeBounds(range, timeZone));
+    ({ from, to } = rangeBounds(range, timeZone, undefined, custom));
   }
 
   const { rows } = await withDb((db) =>
@@ -248,8 +257,9 @@ export async function loadHistory(range: RangeKey, week?: string) {
        where ($1::date is null or c.shift_date >= $1) and ($2::date is null or c.shift_date <= $2)
        group by c.id
        order by c.shift_date desc, ${SERVICE_ORDER} desc, c.created_at desc
-       limit 1000`,
-      [from, to],
+       limit $3`,
+      // A custom range is for tax time, so it never cuts shifts off.
+      [from, to, range === "custom" ? null : 1000],
     ),
   );
 

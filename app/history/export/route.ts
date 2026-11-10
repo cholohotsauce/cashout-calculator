@@ -10,9 +10,9 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const param = params.get("range");
   const range = isRangeKey(param) ? param : "payday";
-  const { shifts, from, to } = await loadHistory(range, params.get("week") ?? undefined);
+  const { shifts, from, to } = await loadHistory(range, params.get("week") ?? undefined, { from: params.get("from"), to: params.get("to") });
 
-  return new Response(shiftsToCsv(shifts), {
+  return new Response(shiftsToCsv(shifts, { from, to }), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${csvFileName(from, to)}"`,
