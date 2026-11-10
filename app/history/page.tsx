@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import Form from "next/form";
 import { connection } from "next/server";
 import { SERVICES, formatHours, formatMoney } from "@/lib/cashout";
 import { isDatabaseConfigured } from "@/lib/db";
 import { isManager, isPinConfigured } from "@/lib/auth";
 import { RANGES, isRangeKey, loadHistory, type PeriodStatus, type RangeKey, type SavedShift } from "@/lib/history";
-import { addDays, businessDate, formatDay, formatRange, mondayOf } from "@/lib/payroll";
+import { addDays, businessDate, formatDay, formatRange, mondayOf, quarterLabel, recentQuarters } from "@/lib/payroll";
 import { markPaidAction, unmarkPaidAction, sendStubsAction } from "../actions";
 import { Panel, Shell } from "./ui";
 import { ConfirmAction } from "./ConfirmAction";
@@ -149,6 +150,51 @@ function PaydayCard({ period }: { period: PeriodStatus }) {
   );
 }
 
+/** Pick any start and end date, e.g. a quarter for taxes. Works without JavaScript (a plain GET form). */
+function CustomRangeCard({ from, to, today }: { from: string; to: string; today: string }) {
+  const presets = [
+    ...recentQuarters(today, 4).map((q) => ({ ...q, label: quarterLabel(q) })),
+    { from: `${today.slice(0, 4)}-01-01`, to: today, label: `${today.slice(0, 4)} so far` },
+  ];
+  const input =
+    "mt-1.5 block w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-base text-white [color-scheme:dark] focus:border-copper/60 focus:outline-none focus:ring-2 focus:ring-copper/30";
+  return (
+    <Panel title="Custom dates" aside="For taxes, any start and end">
+      <Form action="/history" className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <input type="hidden" name="range" value="custom" />
+        <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">
+          From
+          <input type="date" name="from" defaultValue={from} required className={input} />
+        </label>
+        <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">
+          To
+          <input type="date" name="to" defaultValue={to} required className={input} />
+        </label>
+        <button type="submit" className="rounded-full bg-white/90 px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-white">
+          Show
+        </button>
+      </Form>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {presets.map((p) => {
+          const active = p.from === from && p.to === to;
+          return (
+            <Link
+              key={p.label}
+              href={`/history?range=custom&from=${p.from}&to=${p.to}`}
+              aria-current={active ? "true" : undefined}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                active ? "border-copper/50 bg-copper/20 text-copper-light" : "border-white/10 bg-white/5 text-white/65 hover:bg-white/15 hover:text-white"
+              }`}
+            >
+              {p.label}
+            </Link>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 export default async function HistoryPage({ searchParams }: PageProps<"/history">) {
   // Always render per request: the setup state comes from env vars and history is private.
   await connection();
@@ -179,12 +225,12 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
   const params = await searchParams;
   const range: RangeKey = isRangeKey(params.range) ? params.range : "payday";
   const week = typeof params.week === "string" ? params.week : undefined;
-  const { from, to, shifts, staffTotals, totals, period, paidWeeks } = await loadHistory(range, week);
-  const exportHref = `/history/export?range=${range}${period ? `&week=${period.weekStart}` : ""}`;
+  const { from, to, today, shifts, staffTotals, totals, period, paidWeeks } = await loadHistory(range, week, { from: params.from, to: params.to });
+  const exportHref = `/history/export?range=${range}${period ? `&week=${period.weekStart}` : ""}${range === "custom" ? `&from=${from}&to=${to}` : ""}`;
 
   return (
     <Shell signedIn section="history">
-      <nav className="flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-white/[0.05] p-1.5 backdrop-blur-3xl" aria-label="Date range">
+      <nav className="grid grid-cols-3 gap-1.5 rounded-[24px] border sm:flex sm:rounded-full border-white/10 bg-white/[0.05] p-1.5 backdrop-blur-3xl" aria-label="Date range">
         {(Object.keys(RANGES) as RangeKey[]).map((key) => (
           <Link
             key={key}
@@ -200,6 +246,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
       </nav>
 
       {period && <PaydayCard period={period} />}
+      {range === "custom" && from && to && <CustomRangeCard from={from} to={to} today={today} />}
 
       <div className="flex items-center justify-between px-1">
         <p className="text-sm text-white/50">{period ? "Totals for this pay week" : rangeLabel(from, to)}</p>

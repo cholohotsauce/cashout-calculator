@@ -16,7 +16,7 @@ export const addDays = (d: string, n: number) => format(new Date(parse(d).getTim
 export const weekdayIndex = (d: string) => (parse(d).getUTCDay() + 6) % 7;
 
 export const isIsoDate = (v: unknown): v is string =>
-  typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && format(parse(v)) === v;
+  typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(parse(v).getTime()) && format(parse(v)) === v;
 
 /**
  * The Ace's day turns over at 4am, not midnight: a close that runs past midnight still belongs
@@ -107,4 +107,37 @@ export function formatRange(from: string, to: string) {
     day: "numeric",
     year: "numeric",
   })}`;
+}
+
+/** First and last day of the calendar quarter (Jan–Mar, Apr–Jun, …) that contains `d`. */
+export function quarterOf(d: string) {
+  const year = Number(d.slice(0, 4));
+  const firstMonth = Math.floor((Number(d.slice(5, 7)) - 1) / 3) * 3 + 1;
+  const from = `${year}-${String(firstMonth).padStart(2, "0")}-01`;
+  const next = firstMonth === 10 ? `${year + 1}-01-01` : `${year}-${String(firstMonth + 3).padStart(2, "0")}-01`;
+  return { from, to: addDays(next, -1) };
+}
+
+/** Label for a quarter, e.g. "Jul – Sep 2026". */
+export const quarterLabel = (q: { from: string; to: string }) =>
+  `${formatDay(q.from, { month: "short" })} – ${formatDay(q.to, { month: "short", year: "numeric" })}`;
+
+/** The last `n` full quarters before the one `today` is in, newest first. */
+export function recentQuarters(today: string, n = 4) {
+  const out: { from: string; to: string }[] = [];
+  let q = quarterOf(today);
+  for (let i = 0; i < n; i++) {
+    q = quarterOf(addDays(q.from, -1));
+    out.push(q);
+  }
+  return out;
+}
+
+/**
+ * A manager-picked date range. Missing or invalid dates fall back to the last full quarter,
+ * since that's what taxes are usually done on; reversed dates are swapped.
+ */
+export function customRange(from: unknown, to: unknown, today: string) {
+  if (!isIsoDate(from) || !isIsoDate(to)) return recentQuarters(today, 1)[0];
+  return from <= to ? { from, to } : { from: to, to: from };
 }
